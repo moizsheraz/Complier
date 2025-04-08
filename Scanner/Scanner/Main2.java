@@ -95,36 +95,174 @@ public class Main2 extends JFrame {
         setVisible(true);
     }
 
-    private JPanel createBottomPanel() {
-        JPanel bottomPanel = new JPanel(new BorderLayout());
+private JPanel createBottomPanel() {
+    JPanel bottomPanel = new JPanel(new BorderLayout());
+    
+    // Create tabbed pane for symbol table and tokens
+    JTabbedPane bottomTabbedPane = new JTabbedPane();
+    bottomTabbedPane.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+
+    // Symbol Table
+    String[] symbolColumns = { "Name", "Type", "Size", "Dimension", "Line of Declaration", "Line of Usage", "Address" };
+    Object[][] symbolData = {};
+    symbolTable = new JTable(new DefaultTableModel(symbolData, symbolColumns));
+    styleTable(symbolTable);
+    JScrollPane symbolScrollPane = new JScrollPane(symbolTable);
+    symbolScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    bottomTabbedPane.addTab("Symbol Table", createImageIcon("/icons/symbol.png", "Symbol Table"), symbolScrollPane);
+
+    // Token Table
+    String[] tokenColumns = { "Token", "Type", "Count", "Line Numbers" };
+    Object[][] tokenData = {};
+    tokenTable = new JTable(new DefaultTableModel(tokenData, tokenColumns));
+    styleTable(tokenTable);
+    DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+    centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+    tokenTable.getColumnModel().getColumn(2).setCellRenderer(centerRenderer);
+    JScrollPane tokenScrollPane = new JScrollPane(tokenTable);
+    tokenScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    bottomTabbedPane.addTab("Tokens", createImageIcon("/icons/token.png", "Tokens"), tokenScrollPane);
+
+    // Syntax Analysis tab
+    JPanel syntaxPanel = new JPanel(new BorderLayout());
+    JTextArea syntaxOutput = new JTextArea();
+    syntaxOutput.setEditable(false);
+    syntaxOutput.setFont(new Font("Monospaced", Font.PLAIN, 12));
+    JScrollPane syntaxScrollPane = new JScrollPane(syntaxOutput);
+    syntaxScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+    bottomTabbedPane.addTab("Syntax Analysis", createImageIcon("/icons/syntax.png", "Syntax Analysis"), syntaxScrollPane);
+
+    // Add analyze button
+    JButton analyzeButton = new JButton("Analyze Syntax");
+    analyzeButton.addActionListener(e -> {
+        String analysisResult = analyzeSyntax();
+        syntaxOutput.setText(analysisResult);
+    });
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+    buttonPanel.add(analyzeButton);
+    syntaxPanel.add(syntaxScrollPane, BorderLayout.CENTER);
+    syntaxPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+    // Add the tabbed pane to the bottom panel
+    bottomPanel.add(bottomTabbedPane, BorderLayout.CENTER);
+    return bottomPanel;
+}
+
+    private String analyzeSyntax() {
+        StringBuilder result = new StringBuilder();
+        String codeText = codeEditor.getText();
+        String[] lines = codeText.split("\\r?\\n");
         
-        // Create tabbed pane for symbol table and tokens
-        JTabbedPane bottomTabbedPane = new JTabbedPane();
-        bottomTabbedPane.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        result.append("=== Syntax Analysis Report ===\n\n");
+        
+        // Analyze each line
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            
+            result.append("Line ").append(i+1).append(": ");
+            
+            if (isDeclarationStatement(line)) {
+                result.append("Variable Declaration - ").append(analyzeDeclaration(line)).append("\n");
+            } 
+            else if (isInitializationStatement(line)) {
+                result.append("Variable Initialization - ").append(analyzeInitialization(line)).append("\n");
+            } 
+            else if (isAssignmentStatement(line)) {
+                result.append("Assignment Statement - ").append(analyzeAssignment(line)).append("\n");
+            } 
+            else if (isIfStatement(line)) {
+                result.append("If Statement - ").append(analyzeIfStatement(line)).append("\n");
+            } 
+            else if (isIfElseStatement(line)) {
+                result.append("If-Else Statement - ").append(analyzeIfElseStatement(line)).append("\n");
+            }
+            else {
+                result.append("Other Statement\n");
+            }
+        }
+        
+        return result.toString();
+    }
 
-        // Symbol Table
-        String[] symbolColumns = { "Name", "Type", "Size", "Dimension", "Line of Declaration", "Line of Usage", "Address" };
-        Object[][] symbolData = {};
-        symbolTable = new JTable(new DefaultTableModel(symbolData, symbolColumns));
-        styleTable(symbolTable);
-        JScrollPane symbolScrollPane = new JScrollPane(symbolTable);
-        symbolScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        bottomTabbedPane.addTab("Symbol Table", createImageIcon("/icons/symbol.png", "Symbol Table"), symbolScrollPane);
+    private String analyzeDeclaration(String line) {
+        Pattern pattern = Pattern.compile(
+            "\\b(int|double|String|char|boolean|float|long)(\\s*\\[\\s*\\])*\\s+" +
+            "([a-zA-Z_][a-zA-Z0-9_]*\\s*(\\[\\s*\\])*(\\s*,\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*(\\[\\s*\\])*)*)\\s*;");
+        Matcher matcher = pattern.matcher(line);
+        
+        if (matcher.find()) {
+            String type = matcher.group(1) + (matcher.group(2) != null ? matcher.group(2).replaceAll("\\s", "") : "");
+            String varsList = matcher.group(3).replaceAll("\\s*\\[\\s*\\]", "[]");
+            String[] varNames = varsList.split("\\s*,\\s*");
+            
+            return "Declared " + varNames.length + " variable(s) of type " + type;
+        }
+        return "Invalid declaration syntax";
+    }
 
-        // Token Table
-        String[] tokenColumns = { "Token", "Type", "Count", "Line Numbers" };
-        Object[][] tokenData = {};
-        tokenTable = new JTable(new DefaultTableModel(tokenData, tokenColumns));
-        styleTable(tokenTable);
-        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-        tokenTable.getColumnModel().getColumn(2).setCellRenderer(centerRenderer);
-        JScrollPane tokenScrollPane = new JScrollPane(tokenTable);
-        tokenScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        bottomTabbedPane.addTab("Tokens", createImageIcon("/icons/token.png", "Tokens"), tokenScrollPane);
+    private String analyzeInitialization(String line) {
+        Pattern pattern = Pattern.compile(
+            "\\b(int|double|String|char|boolean|float|long)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(\\s*\\[\\s*\\])?\\s*=\\s*(.*?)\\s*;");
+        Matcher matcher = pattern.matcher(line);
+        
+        if (matcher.find()) {
+            String type = matcher.group(1);
+            String name = matcher.group(2);
+            boolean isArray = matcher.group(3) != null;
+            String value = matcher.group(4);
+            
+            return "Initialized " + (isArray ? "array " : "") + "variable '" + name + 
+                   "' of type " + type + " with value: " + value;
+        }
+        return "Invalid initialization syntax";
+    }
 
-        bottomPanel.add(bottomTabbedPane, BorderLayout.CENTER);
-        return bottomPanel;
+    private String analyzeAssignment(String line) {
+        Pattern pattern = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*(.*?)\\s*;");
+        Matcher matcher = pattern.matcher(line);
+        
+        if (matcher.find()) {
+            String varName = matcher.group(1);
+            String value = matcher.group(2);
+            
+            if (symbols.containsKey(varName)) {
+                return "Assignment to variable '" + varName + "' (" + symbols.get(varName).getType() + 
+                       ") with value: " + value;
+            } else {
+                return "Assignment to undeclared variable '" + varName + "'";
+            }
+        }
+        return "Invalid assignment syntax";
+    }
+
+    private String analyzeIfStatement(String line) {
+        Pattern pattern = Pattern.compile("if\\s*\\(([^)]+)\\)");
+        Matcher matcher = pattern.matcher(line);
+        
+        if (matcher.find()) {
+            String condition = matcher.group(1);
+            return "Condition: " + condition;
+        }
+        return "Invalid if statement syntax";
+    }
+
+    private String analyzeIfElseStatement(String line) {
+        if (line.contains("else if")) {
+            Pattern pattern = Pattern.compile("else\\s+if\\s*\\(([^)]+)\\)");
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.find()) {
+                String condition = matcher.group(1);
+                return "Else-If with condition: " + condition;
+            }
+        } else if (line.contains("else")) {
+            return "Else statement";
+        }
+        return "Invalid if-else syntax";
+    }
+
+    private boolean isIfElseStatement(String line) {
+        return line.trim().startsWith("else if") || line.trim().startsWith("else");
     }
 
     // All other methods remain exactly the same as in your original code
@@ -611,8 +749,23 @@ public class Main2 extends JFrame {
         tokenizeMenuItem.setForeground(Color.WHITE); // White text
         tokenizeMenuItem.setOpaque(true);
     
+        // Syntax Analysis Menu Item
+        ImageIcon syntaxIcon = new ImageIcon(getClass().getResource("/icons/file.png"));
+        Image scaledSyntaxIcon = syntaxIcon.getImage().getScaledInstance(32, 32, Image.SCALE_SMOOTH);
+        JMenuItem syntaxMenuItem = new JMenuItem("Syntax Analysis", new ImageIcon(scaledSyntaxIcon));
+        syntaxMenuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0));
+        syntaxMenuItem.addActionListener(e -> {
+            String analysisResult = analyzeSyntax();
+            JOptionPane.showMessageDialog(this, analysisResult, "Syntax Analysis", JOptionPane.INFORMATION_MESSAGE);
+        });
+        syntaxMenuItem.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        syntaxMenuItem.setBackground(new Color(0, 122, 204)); // Blue background
+        syntaxMenuItem.setForeground(Color.WHITE); // White text
+        syntaxMenuItem.setOpaque(true);
+
         compileMenu.add(tokenizeMenuItem);
-    
+        compileMenu.add(syntaxMenuItem);
+
         // Help Menu
         ImageIcon helpIcon = new ImageIcon(getClass().getResource("/icons/help.png"));
         Image scaledHelpIcon = helpIcon.getImage().getScaledInstance(32, 32, Image.SCALE_SMOOTH);
@@ -623,7 +776,7 @@ public class Main2 extends JFrame {
         helpMenu.setBackground(new Color(0, 122, 204)); // Blue background
         helpMenu.setForeground(Color.WHITE); // White text
         helpMenu.setOpaque(true);
-    
+
         // Help Contents Menu Item
         ImageIcon helpContentsIcon = new ImageIcon(getClass().getResource("/icons/file.png"));
         Image scaledHelpContentsIcon = helpContentsIcon.getImage().getScaledInstance(32, 32, Image.SCALE_SMOOTH);
@@ -633,7 +786,7 @@ public class Main2 extends JFrame {
         helpContentsMenuItem.setBackground(new Color(0, 122, 204)); // Blue background
         helpContentsMenuItem.setForeground(Color.WHITE); // White text
         helpContentsMenuItem.setOpaque(true);
-    
+
         // About Menu Item
         ImageIcon aboutIcon = new ImageIcon(getClass().getResource("/icons/file.png"));
         Image scaledAboutIcon = aboutIcon.getImage().getScaledInstance(32, 32, Image.SCALE_SMOOTH);
@@ -644,17 +797,17 @@ public class Main2 extends JFrame {
         aboutMenuItem.setBackground(new Color(0, 122, 204)); // Blue background
         aboutMenuItem.setForeground(Color.WHITE); // White text
         aboutMenuItem.setOpaque(true);
-    
+
         helpMenu.add(helpContentsMenuItem);
         helpMenu.addSeparator();
         helpMenu.add(aboutMenuItem);
-    
+
         menuBar.add(fileMenu);
         menuBar.add(editMenu);
         menuBar.add(viewMenu);
         menuBar.add(compileMenu);
         menuBar.add(helpMenu);
-    
+
         setJMenuBar(menuBar);
     }
 
@@ -729,6 +882,15 @@ public class Main2 extends JFrame {
         tokenizeButton.setFocusable(false);
         tokenizeButton.addActionListener(e -> tokenizeCode());
 
+        // Syntax Analysis button
+        JButton syntaxButton = new JButton(createImageIcon("/icons/syntax.png", "Syntax Analysis"));
+        syntaxButton.setToolTipText("Analyze Syntax (F10)");
+        syntaxButton.setFocusable(false);
+        syntaxButton.addActionListener(e -> {
+            String analysisResult = analyzeSyntax();
+            JOptionPane.showMessageDialog(this, analysisResult, "Syntax Analysis", JOptionPane.INFORMATION_MESSAGE);
+        });
+
         toolBar.add(newButton);
         toolBar.add(openButton);
         toolBar.add(saveButton);
@@ -743,6 +905,7 @@ public class Main2 extends JFrame {
         toolBar.add(findButton);
         toolBar.addSeparator();
         toolBar.add(tokenizeButton);
+        toolBar.add(syntaxButton);
 
         add(toolBar, BorderLayout.NORTH);
     }
@@ -1187,7 +1350,7 @@ public class Main2 extends JFrame {
 
     private void processAssignment(String line, int lineNum) {
         // Extract variable name and value from assignment
-        Pattern pattern = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_])\\s=\\s*([^;]+)\\s*;");
+        Pattern pattern = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*([^;]+)\\s*;");
         Matcher matcher = pattern.matcher(line.trim());
 
         if (matcher.find()) {
@@ -1454,7 +1617,7 @@ public class Main2 extends JFrame {
                 JOptionPane.showMessageDialog(this, "File saved successfully!", "Success",
                         JOptionPane.INFORMATION_MESSAGE);
 
-            } catch (IOException e) {
+                       } catch (IOException e) {
                 JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage(), "Error",
                         JOptionPane.ERROR_MESSAGE);
             }
@@ -1463,7 +1626,7 @@ public class Main2 extends JFrame {
 
     private void showAboutDialog() {
         JOptionPane.showMessageDialog(this,
-                "Java Code Compiler\nVersion 1.0\n\nA simple Java code compiler with tokenization capabilities.\n",
+                "Java Code Compiler\nVersion 1.0\n\nA simple Java code compiler with tokenization and syntax analysis capabilities.\n",
                 "About Java Code Compiler",
                 JOptionPane.INFORMATION_MESSAGE);
     }
@@ -1597,7 +1760,7 @@ public class Main2 extends JFrame {
         }
     }
 
-    // Add TokenInfo class
+    // Inner class for token information
     private class TokenInfo {
         private String token;
         private String type;
