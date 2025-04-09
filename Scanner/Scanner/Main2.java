@@ -185,6 +185,89 @@ private JPanel createBottomPanel() {
         return result.toString();
     }
 
+    // New method to check for syntax errors
+    private ArrayList<SyntaxError> checkSyntaxErrors() {
+        ArrayList<SyntaxError> errors = new ArrayList<>();
+        String codeText = codeEditor.getText();
+        String[] lines = codeText.split("\\r?\\n");
+        
+        // Analyze each line
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.isEmpty()) continue;
+            
+            // Check for missing semicolons
+            if (!line.endsWith(";") && !line.endsWith("{") && !line.endsWith("}") 
+                && !line.startsWith("if") && !line.startsWith("else") 
+                && !line.startsWith("for") && !line.startsWith("while")
+                && !line.startsWith("//") && !line.startsWith("/*")
+                && !line.endsWith("*/") && line.length() > 0) {
+                errors.add(new SyntaxError(i+1, "Missing semicolon at the end of statement"));
+            }
+            
+            // Check for unbalanced parentheses
+            int openParenCount = 0;
+            int closeParenCount = 0;
+            for (char c : line.toCharArray()) {
+                if (c == '(') openParenCount++;
+                if (c == ')') closeParenCount++;
+            }
+            if (openParenCount != closeParenCount) {
+                errors.add(new SyntaxError(i+1, "Unbalanced parentheses"));
+            }
+            
+            // Check for unbalanced braces
+            int openBraceCount = 0;
+            int closeBraceCount = 0;
+            for (char c : line.toCharArray()) {
+                if (c == '{') openBraceCount++;
+                if (c == '}') closeBraceCount++;
+            }
+            if (openBraceCount != closeBraceCount) {
+                errors.add(new SyntaxError(i+1, "Unbalanced braces"));
+            }
+            
+            // Check for invalid variable declarations
+            if (line.matches(".*\\b(int|double|String|char|boolean|float|long)\\b.*") && 
+                !isDeclarationStatement(line) && !isInitializationStatement(line)) {
+                errors.add(new SyntaxError(i+1, "Invalid variable declaration syntax"));
+            }
+            
+            // Check for invalid assignment statements
+            if (line.contains("=") && !line.contains("==") && !line.contains("!=") && 
+                !line.contains("<=") && !line.contains(">=") && 
+                !isInitializationStatement(line) && !isAssignmentStatement(line)) {
+                errors.add(new SyntaxError(i+1, "Invalid assignment syntax"));
+            }
+        }
+        
+        return errors;
+    }
+
+    // Class to represent a syntax error
+    private class SyntaxError {
+        private int lineNumber;
+        private String message;
+        
+        public SyntaxError(int lineNumber, String message) {
+            this.lineNumber = lineNumber;
+            this.message = message;
+        }
+        
+        public int getLineNumber() {
+            return lineNumber;
+        }
+        
+        public String getMessage() {
+            return message;
+        }
+        
+        @Override
+        public String toString() {
+            return "Line " + lineNumber + ": " + message;
+        }
+    }
+
     private String analyzeDeclaration(String line) {
         Pattern pattern = Pattern.compile(
             "\\b(int|double|String|char|boolean|float|long)(\\s*\\[\\s*\\])*\\s+" +
@@ -218,52 +301,53 @@ private JPanel createBottomPanel() {
         return "Invalid initialization syntax";
     }
 
-    private String analyzeAssignment(String line) {
-        Pattern pattern = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*(.*?)\\s*;");
-        Matcher matcher = pattern.matcher(line);
+private String analyzeAssignment(String line) {
+    Pattern pattern = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*(.*?)\\s*;");
+    Matcher matcher = pattern.matcher(line);
+    
+    if (matcher.find()) {
+        String varName = matcher.group(1);
+        String value = matcher.group(2);
         
-        if (matcher.find()) {
-            String varName = matcher.group(1);
-            String value = matcher.group(2);
-            
-            if (symbols.containsKey(varName)) {
-                return "Assignment to variable '" + varName + "' (" + symbols.get(varName).getType() + 
-                       ") with value: " + value;
-            } else {
-                return "Assignment to undeclared variable '" + varName + "'";
-            }
+        if (symbols.containsKey(varName)) {
+            return "Assignment to variable '" + varName + "' (" + symbols.get(varName).getType() + 
+                   ") with value: " + value;
+        } else {
+            return "Assignment to undeclared variable '" + varName + "'";
         }
-        return "Invalid assignment syntax";
     }
+    return "Invalid assignment syntax";
+}
 
-    private String analyzeIfStatement(String line) {
-        Pattern pattern = Pattern.compile("if\\s*\\(([^)]+)\\)");
+private String analyzeIfStatement(String line) {
+    Pattern pattern = Pattern.compile("if\\s*\\$\\(([^)]+)\\)\\$");
+    Matcher matcher = pattern.matcher(line);
+    
+    if (matcher.find()) {
+        String condition = matcher.group(1);
+        return "Condition: " + condition;
+    }
+    return "Invalid if statement syntax";
+}
+
+private String analyzeIfElseStatement(String line) {
+    if (line.contains("else if")) {
+        Pattern pattern = Pattern.compile("else\\s+if\\s*\\$\\(([^)]+)\\)\\$");
         Matcher matcher = pattern.matcher(line);
-        
         if (matcher.find()) {
             String condition = matcher.group(1);
-            return "Condition: " + condition;
+            return "Else-If with condition: " + condition;
         }
-        return "Invalid if statement syntax";
+    } else if (line.contains("else")) {
+        return "Else statement";
     }
+    return "Invalid if-else syntax";
+}
 
-    private String analyzeIfElseStatement(String line) {
-        if (line.contains("else if")) {
-            Pattern pattern = Pattern.compile("else\\s+if\\s*\\(([^)]+)\\)");
-            Matcher matcher = pattern.matcher(line);
-            if (matcher.find()) {
-                String condition = matcher.group(1);
-                return "Else-If with condition: " + condition;
-            }
-        } else if (line.contains("else")) {
-            return "Else statement";
-        }
-        return "Invalid if-else syntax";
-    }
+private boolean isIfElseStatement(String line) {
+    return line.trim().startsWith("else if") || line.trim().startsWith("else");
+}
 
-    private boolean isIfElseStatement(String line) {
-        return line.trim().startsWith("else if") || line.trim().startsWith("else");
-    }
 
     // All other methods remain exactly the same as in your original code
     // Only the layout-related methods were changed
@@ -1131,6 +1215,48 @@ private JPanel createBottomPanel() {
         String[] lines = codeText.split("\\r?\\n");
         boolean inBlockComment = false;
 
+        // First check for syntax errors
+        ArrayList<SyntaxError> errors = checkSyntaxErrors();
+        
+        // If there are syntax errors, show them in a popup
+        if (!errors.isEmpty()) {
+            // Create a styled text pane for the error message
+            JTextPane errorPane = new JTextPane();
+            StyledDocument doc = errorPane.getStyledDocument();
+            
+            // Create a style for error messages
+            Style errorStyle = errorPane.addStyle("Error", null);
+            StyleConstants.setForeground(errorStyle, Color.RED);
+            StyleConstants.setBold(errorStyle, true);
+            
+            // Create a style for the header
+            Style headerStyle = errorPane.addStyle("Header", null);
+            StyleConstants.setForeground(headerStyle, Color.BLACK);
+            StyleConstants.setBold(headerStyle, true);
+            StyleConstants.setFontSize(headerStyle, 14);
+            
+            try {
+                // Add header
+                doc.insertString(doc.getLength(), "Syntax Errors Detected:\n\n", headerStyle);
+                
+                // Add each error with line number
+                for (SyntaxError error : errors) {
+                    doc.insertString(doc.getLength(), "Line " + error.getLineNumber() + ": ", null);
+                    doc.insertString(doc.getLength(), error.getMessage() + "\n", errorStyle);
+                }
+            } catch (BadLocationException e) {
+                e.printStackTrace();
+            }
+            
+            // Set the size of the error pane
+            errorPane.setPreferredSize(new Dimension(400, 200));
+            
+            // Show the error pane in a JOptionPane
+            JScrollPane scrollPane = new JScrollPane(errorPane);
+            JOptionPane.showMessageDialog(this, scrollPane, "Syntax Errors", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
             StringBuilder cleanedLine = new StringBuilder();
@@ -1373,85 +1499,85 @@ private JPanel createBottomPanel() {
         tokenizeLine(line, lineNum);
     }
 
-    private void processIfStatement(String line, int lineNum) {
-        // For if statements, we'll extract condition and tokenize
-        if (line.trim().startsWith("if") || line.trim().startsWith("} else if") || line.trim().startsWith("else if")) {
-            // Extract the condition between parentheses
-            Pattern pattern = Pattern.compile("\\(([^)]+)\\)");
-            Matcher matcher = pattern.matcher(line);
+private void processIfStatement(String line, int lineNum) {
+    // For if statements, we'll extract condition and tokenize
+    if (line.trim().startsWith("if") || line.trim().startsWith("} else if") || line.trim().startsWith("else if")) {
+        // Extract the condition between $(...)$
+        Pattern pattern = Pattern.compile("\\$\\(([^)]+)\\)\\$");
+        Matcher matcher = pattern.matcher(line);
 
-            if (matcher.find()) {
-                String condition = matcher.group(1);
+        if (matcher.find()) {
+            String condition = matcher.group(1);
 
-                // Count tokens
-                addToken("if", "keyword", lineNum);
-                addToken("(", "separator", lineNum);
+            // Count tokens
+            addToken("if", "keyword", lineNum);
+            addToken("(", "separator", lineNum);
 
-                // Tokenize the condition
-                StringTokenizer tokenizer = new StringTokenizer(condition, " \t\n\r\f+-*/=<>!&|^%.", true);
-                while (tokenizer.hasMoreTokens()) {
-                    String token = tokenizer.nextToken().trim();
-                    if (!token.isEmpty()) {
-                        if (isOperator(token)) {
-                            addToken(token, "operator", lineNum);
-                        } else if (isKeyword(token)) {
-                            addToken(token, "keyword", lineNum);
-                        } else if (isIdentifier(token)) {
-                            addToken(token, "identifier", lineNum);
-                        } else {
-                            addToken(token, "literal", lineNum);
-                        }
+            // Tokenize the condition
+            StringTokenizer tokenizer = new StringTokenizer(condition, " \t\n\r\f+-*/=<>!&|^%.", true);
+            while (tokenizer.hasMoreTokens()) {
+                String token = tokenizer.nextToken().trim();
+                if (!token.isEmpty()) {
+                    if (isOperator(token)) {
+                        addToken(token, "operator", lineNum);
+                    } else if (isKeyword(token)) {
+                        addToken(token, "keyword", lineNum);
+                    } else if (isIdentifier(token)) {
+                        addToken(token, "identifier", lineNum);
+                    } else {
+                        addToken(token, "literal", lineNum);
                     }
                 }
-
-                addToken(")", "separator", lineNum);
             }
 
-            if (line.contains("else")) {
-                addToken("else", "keyword", lineNum);
-            }
-        } else if (line.trim().startsWith("else")) {
+            addToken(")", "separator", lineNum);
+        }
+
+        if (line.contains("else")) {
             addToken("else", "keyword", lineNum);
         }
-
-        // Tokenize the whole line as well
-        tokenizeLine(line, lineNum);
+    } else if (line.trim().startsWith("else")) {
+        addToken("else", "keyword", lineNum);
     }
 
-    private void processForLoop(String line, int lineNum) {
-        // For for loops, we'll extract all three parts and tokenize
-        if (line.trim().startsWith("for")) {
-            // Extract the three parts of the for loop
-            Pattern pattern = Pattern.compile("for\\s*\\(([^;]+);([^;]+);([^)]+)\\)");
-            Matcher matcher = pattern.matcher(line);
+    // Tokenize the whole line as well
+    tokenizeLine(line, lineNum);
+}
 
-            if (matcher.find()) {
-                String initialization = matcher.group(1);
-                String condition = matcher.group(2);
-                String increment = matcher.group(3);
+private void processForLoop(String line, int lineNum) {
+    if (line.trim().startsWith("for")) {
+        // Extract the three parts of the for loop from $(init; condition; increment)$
+        Pattern pattern = Pattern.compile("for\\s*\\$\\(([^;]+);([^;]+);([^)]+)\\)\\$");
+        Matcher matcher = pattern.matcher(line);
 
-                // Count tokens
-                addToken("for", "keyword", lineNum);
-                addToken("(", "separator", lineNum);
+        if (matcher.find()) {
+            String initialization = matcher.group(1);
+            String condition = matcher.group(2);
+            String increment = matcher.group(3);
 
-                // Tokenize the initialization part
-                tokenizePart(initialization, lineNum);
-                addToken(";", "separator", lineNum);
+            // Count tokens
+            addToken("for", "keyword", lineNum);
+            addToken("(", "separator", lineNum);
 
-                // Tokenize the condition part
-                tokenizePart(condition, lineNum);
-                addToken(";", "separator", lineNum);
+            // Tokenize the initialization part
+            tokenizePart(initialization, lineNum);
+            addToken(";", "separator", lineNum);
 
-                // Tokenize the increment part
-                tokenizePart(increment, lineNum);
+            // Tokenize the condition part
+            tokenizePart(condition, lineNum);
+            addToken(";", "separator", lineNum);
 
-                addToken(")", "separator", lineNum);
-            }
+            // Tokenize the increment part
+            tokenizePart(increment, lineNum);
+
+            addToken(")", "separator", lineNum);
         }
-
-        // Tokenize the whole line as well
-        tokenizeLine(line, lineNum);
     }
+
+    // Tokenize the whole line as well
+    tokenizeLine(line, lineNum);
+}
+
 
     private void tokenizePart(String part, int lineNum) {
         StringTokenizer tokenizer = new StringTokenizer(part, " \t\n\r\f+-*/=<>!&|^%.", true);
