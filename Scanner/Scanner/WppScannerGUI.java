@@ -740,7 +740,7 @@ public class WppScannerGUI extends JFrame {
             UIManager.put("ProgressBar.arc", 10);
             UIManager.put("Table.showHorizontalLines", true);
             UIManager.put("Table.showVerticalLines", true);
-            UIManager.put("Table.gridColor", new Color(230, 230, 230));
+            UIManager.put("Table.gridColor", new Color(200, 200, 200));
             UIManager.put("ScrollPane.border", BorderFactory.createEmptyBorder());
             UIManager.put("TabbedPane.contentBorderInsets", new Insets(0, 0, 0, 0));
             UIManager.put("TabbedPane.tabsOverlapBorder", true);
@@ -750,54 +750,54 @@ public class WppScannerGUI extends JFrame {
 
         // Menu bar setup
         JMenuBar menuBar = new JMenuBar();
+        menuBar.setBackground(new Color(236, 240, 245));
         JMenu fileMenu = new JMenu("File");
-        fileMenu.add(createMenuItem("New", "/icons/new.png",
+        fileMenu.add(createMenuItem("New", "FileView.fileIcon",
                 KeyStroke.getKeyStroke(KeyEvent.VK_N, InputEvent.CTRL_DOWN_MASK), e -> {
                     codeArea.setText("");
                     statusLabelLeft.setText("New file");
                     updateLineNumbers();
                     updateDocumentStats();
                 }));
-        fileMenu.add(createMenuItem("Open", "/icons/open.png",
+        fileMenu.add(createMenuItem("Open", "FileView.directoryIcon",
                 KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK), e -> openFile()));
         openRecentMenu = new JMenu("Open Recent");
-        openRecentMenu.setIcon(new ImageIcon(getClass().getResource("/icons/history.png")));
         fileMenu.add(openRecentMenu);
-        fileMenu.add(createMenuItem("Save", "/icons/save.png",
+        fileMenu.add(createMenuItem("Save", "FileView.fileIcon",
                 KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK), e -> saveFile()));
         fileMenu.addSeparator();
-        fileMenu.add(createMenuItem("Exit", "/icons/exit.png",
+        fileMenu.add(createMenuItem("Exit", null,
                 KeyStroke.getKeyStroke(KeyEvent.VK_Q, InputEvent.CTRL_DOWN_MASK), e -> System.exit(0)));
 
         JMenu editMenu = new JMenu("Edit");
-        editMenu.add(createMenuItem("Undo", "/icons/undo.png",
+        editMenu.add(createMenuItem("Undo", "OptionPane.informationIcon",
                 KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), e -> {
                     if (undoManager.canUndo())
                         undoManager.undo();
                 }));
-        editMenu.add(createMenuItem("Redo", "/icons/redo.png",
+        editMenu.add(createMenuItem("Redo", "OptionPane.informationIcon",
                 KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), e -> {
                     if (undoManager.canRedo())
                         undoManager.redo();
                 }));
 
         JMenu compileMenu = new JMenu("Compile");
-        compileMenu.add(createMenuItem("Run Scanner", "/icons/run.png",
-                KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK), e -> runScanner()));
+       compileMenu.add(createMenuItem("Run Scanner", "FileView.computerIcon",
+        KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK), e -> runScanner()));
 
         JMenu searchMenu = new JMenu("Search");
-        searchMenu.add(createMenuItem("Find/Replace...", "/icons/find.png",
+        searchMenu.add(createMenuItem("Find/Replace...", null,
                 KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK),
                 e -> new FindReplaceDialog(this, codeArea).setVisible(true)));
 
         JMenu viewMenu = new JMenu("View");
-        toggleDarkModeItem = createMenuItem("Toggle Dark Mode", "/icons/dark_mode.png",
+        toggleDarkModeItem = createMenuItem("Toggle Dark Mode", "OptionPane.questionIcon",
                 KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK), e -> toggleDarkMode());
         viewMenu.add(toggleDarkModeItem);
 
         JMenu helpMenu = new JMenu("Help");
-        helpMenu.add(createMenuItem("About", "/icons/about.png", null, e -> showAboutDialog()));
-        helpMenu.add(createMenuItem("Keyboard Shortcuts", "/icons/keyboard.png", null, e -> showShortcutsHelp()));
+        helpMenu.add(createMenuItem("About", "OptionPane.informationIcon", null, e -> showAboutDialog()));
+        helpMenu.add(createMenuItem("Keyboard Shortcuts", "OptionPane.informationIcon", null, e -> showShortcutsHelp()));
 
         menuBar.add(fileMenu);
         menuBar.add(editMenu);
@@ -811,12 +811,12 @@ public class WppScannerGUI extends JFrame {
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
         toolBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        toolBar.setBackground(new Color(245, 245, 245));
-        toolBar.add(createToolbarButton("Open", "/icons/open.png", "Open", e -> openFile()));
+        toolBar.setBackground(new Color(236, 240, 245));
+        toolBar.add(createToolbarButton("Open", "FileView.directoryIcon", "Open", e -> openFile()));
         toolBar.addSeparator();
-        toolBar.add(createToolbarButton("Save", "/icons/save.png", "Save", e -> saveFile()));
+        toolBar.add(createToolbarButton("Save", "FileView.fileIcon", "Save", e -> saveFile()));
         toolBar.addSeparator();
-        toolBar.add(createToolbarButton("Run", "/icons/run.png", "Run Scanner", e -> runScanner()));
+        toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e -> runScanner()));
 
         // Code area setup
         codeArea = new JTextPane();
@@ -824,6 +824,7 @@ public class WppScannerGUI extends JFrame {
         String fontName = Arrays.asList(GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames())
                 .contains("JetBrains Mono") ? "JetBrains Mono" : Font.MONOSPACED;
         codeArea.setFont(new Font(fontName, Font.PLAIN, 14));
+        codeArea.setBackground(new Color(245, 247, 250));
         codeArea.setDocument(new DefaultStyledDocument());
         codeArea.putClientProperty("caretWidth", 2);
         codeArea.getDocument().addDocumentListener(new SyntaxHighlightListener());
@@ -833,7 +834,8 @@ public class WppScannerGUI extends JFrame {
 
         // Line numbers
         lineNumbers = new JTextArea("1");
-        lineNumbers.setBackground(Color.LIGHT_GRAY);
+        lineNumbers.setBackground(new Color(230, 234, 240));
+        lineNumbers.setForeground(new Color(80, 80, 80));
         lineNumbers.setEditable(false);
         lineNumbers.setFont(new Font(fontName, Font.PLAIN, 14));
         lineNumbers.setBorder(BorderFactory.createEmptyBorder(10, 5, 10, 5));
@@ -864,6 +866,10 @@ public class WppScannerGUI extends JFrame {
         tokensTable.setRowHeight(25);
         tokensTable.setIntercellSpacing(new Dimension(10, 0));
         tokensTable.setShowGrid(true);
+        tokensTable.setBackground(new Color(245, 247, 250));
+        tokensTable.setForeground(new Color(33, 33, 33));
+        tokensTable.getTableHeader().setBackground(new Color(230, 234, 240));
+        tokensTable.getTableHeader().setForeground(new Color(33, 33, 33));
         tokensTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
         tokensTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         tokensTable.setFillsViewportHeight(true);
@@ -874,6 +880,10 @@ public class WppScannerGUI extends JFrame {
         symbolTable.setRowHeight(25);
         symbolTable.setIntercellSpacing(new Dimension(10, 0));
         symbolTable.setShowGrid(true);
+        symbolTable.setBackground(new Color(245, 247, 250));
+        symbolTable.setForeground(new Color(33, 33, 33));
+        symbolTable.getTableHeader().setBackground(new Color(230, 234, 240));
+        symbolTable.getTableHeader().setForeground(new Color(33, 33, 33));
         symbolTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
         symbolTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         symbolTable.setFillsViewportHeight(true);
@@ -888,20 +898,23 @@ public class WppScannerGUI extends JFrame {
         errorsTable.setRowHeight(25);
         errorsTable.setIntercellSpacing(new Dimension(10, 0));
         errorsTable.setShowGrid(true);
+        errorsTable.setBackground(new Color(245, 247, 250));
+        errorsTable.getTableHeader().setBackground(new Color(230, 234, 240));
+        errorsTable.getTableHeader().setForeground(new Color(33, 33, 33));
         errorsTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
         errorsTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         errorsTable.setFillsViewportHeight(true);
         
         // Set error text color to red
-       errorsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
-    @Override
-    public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
-            boolean hasFocus, int row, int column) {
-        Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-        c.setForeground(Color.RED);
-        return c;
-    }
-});
+        errorsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+                    boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                c.setForeground(new Color(220, 53, 69));
+                return c;
+            }
+        });
 
         errorsTable.addMouseListener(new MouseAdapter() {
             @Override
@@ -927,6 +940,7 @@ public class WppScannerGUI extends JFrame {
         });
 
         JTabbedPane tablesTabbedPane = new JTabbedPane();
+        tablesTabbedPane.setBackground(new Color(236, 240, 245));
         tablesTabbedPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         tablesTabbedPane.addTab("Tokens", new JScrollPane(tokensTable));
         tablesTabbedPane.addTab("Symbol Table", new JScrollPane(symbolTable));
@@ -939,7 +953,8 @@ public class WppScannerGUI extends JFrame {
 
         // Status bar
         JPanel statusPanel = new JPanel(new BorderLayout());
-        statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Color.GRAY));
+        statusPanel.setBackground(new Color(230, 234, 240));
+        statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
         statusLabelLeft = new JLabel("Ready");
         statusLabelCenter = new JLabel("Words: 0 | Chars: 0 | Lines: 0");
         statusLabelCenter.setHorizontalAlignment(JLabel.CENTER);
@@ -950,6 +965,7 @@ public class WppScannerGUI extends JFrame {
 
         // Main panel
         JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.setBackground(new Color(236, 240, 245));
         mainPanel.add(toolBar, BorderLayout.NORTH);
         mainPanel.add(mainSplit, BorderLayout.CENTER);
         mainPanel.add(statusPanel, BorderLayout.SOUTH);
@@ -958,14 +974,22 @@ public class WppScannerGUI extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1200, 700);
         setLocationRelativeTo(null);
-        setIconImage(new ImageIcon(getClass().getResource("/icons/h3_logo.png")).getImage());
         setVisible(true);
         updateLineNumbers();
         updateRecentMenu();
     }
 
-    private JMenuItem createMenuItem(String text, String iconPath, KeyStroke accelerator, ActionListener listener) {
-        JMenuItem item = new JMenuItem(text, iconPath != null ? new ImageIcon(getClass().getResource(iconPath)) : null);
+    private JMenuItem createMenuItem(String text, String iconKey, KeyStroke accelerator, ActionListener listener) {
+        Icon icon = null;
+        if (iconKey != null) {
+            icon = UIManager.getIcon(iconKey);
+            if (icon != null) {
+                System.out.println("Loaded built-in icon: " + iconKey);
+            } else {
+                System.err.println("Warning: Built-in icon not found: " + iconKey);
+            }
+        }
+        JMenuItem item = new JMenuItem(text, icon);
         if (accelerator != null)
             item.setAccelerator(accelerator);
         if (listener != null)
@@ -973,9 +997,19 @@ public class WppScannerGUI extends JFrame {
         return item;
     }
 
-    private JButton createToolbarButton(String text, String iconPath, String tooltip, ActionListener listener) {
-        JButton button = new JButton(text, new ImageIcon(getClass().getResource(iconPath)));
+    private JButton createToolbarButton(String text, String iconKey, String tooltip, ActionListener listener) {
+        Icon icon = null;
+        if (iconKey != null) {
+            icon = UIManager.getIcon(iconKey);
+            if (icon != null) {
+                System.out.println("Loaded built-in icon: " + iconKey);
+            } else {
+                System.err.println("Warning: Built-in icon not found: " + iconKey);
+            }
+        }
+        JButton button = new JButton(text, icon);
         button.setToolTipText(tooltip);
+        button.setBackground(new Color(236, 240, 245));
         if (listener != null)
             button.addActionListener(listener);
         return button;
@@ -985,12 +1019,12 @@ public class WppScannerGUI extends JFrame {
         StyledDocument doc = codeArea.getStyledDocument();
         Style base = doc.getStyle(StyleContext.DEFAULT_STYLE);
         defaultStyle = doc.addStyle("default", base);
-        StyleConstants.setForeground(defaultStyle, Color.BLACK);
+        StyleConstants.setForeground(defaultStyle, new Color(33, 33, 33));
         keywordStyle = doc.addStyle("keyword", base);
-        StyleConstants.setForeground(keywordStyle, new Color(0, 119, 170));
+        StyleConstants.setForeground(keywordStyle, new Color(0, 102, 204));
         StyleConstants.setBold(keywordStyle, true);
         errorStyle = doc.addStyle("error", base);
-        StyleConstants.setForeground(errorStyle, Color.RED);
+        StyleConstants.setForeground(errorStyle, new Color(220, 53, 69));
         StyleConstants.setBold(errorStyle, true);
     }
 
@@ -1031,7 +1065,7 @@ public class WppScannerGUI extends JFrame {
 
     private void showAboutDialog() {
         JOptionPane.showMessageDialog(this,
-                "<html><b>Wpp Compiler by Bianry Brains</b><br><br>" +
+                "<html><b>Wpp Compiler by Binary Brains</b><br><br>" +
                 "<table border='0' cellpadding='3'>" +
                 "<tr><td><font color='#0066cc'>Version:</font></td><td>1.2</td></tr>" +
                 "<tr><td><font color='#0066cc'>Features:</font></td><td>Syntax Analysis, Symbol Table, Error Checking</td></tr>" +
@@ -1075,18 +1109,18 @@ public class WppScannerGUI extends JFrame {
 
     private void toggleDarkMode() {
         darkMode = !darkMode;
-        Color bg = darkMode ? new Color(43, 43, 43) : new Color(250, 250, 250);
-        Color fg = darkMode ? new Color(214, 214, 214) : new Color(33, 33, 33);
-        Color headerBg = darkMode ? new Color(60, 63, 65) : new Color(240, 240, 240);
-        Color gridColor = darkMode ? new Color(80, 80, 80) : new Color(230, 230, 230);
+        Color bg = darkMode ? new Color(30, 31, 34) : new Color(245, 247, 250);
+        Color fg = darkMode ? new Color(200, 200, 200) : new Color(33, 33, 33);
+        Color headerBg = darkMode ? new Color(45, 46, 50) : new Color(230, 234, 240);
+        Color gridColor = darkMode ? new Color(60, 60, 60) : new Color(200, 200, 200);
         
         codeArea.setBackground(bg);
         codeArea.setForeground(fg);
-        codeArea.setCaretColor(darkMode ? Color.WHITE : Color.BLACK);
+        codeArea.setCaretColor(darkMode ? new Color(200, 200, 200) : new Color(33, 33, 33));
         StyleConstants.setForeground(defaultStyle, fg);
-        StyleConstants.setForeground(keywordStyle, darkMode ? new Color(204, 120, 50) : new Color(0, 119, 170));
-        lineNumbers.setBackground(darkMode ? new Color(60, 63, 65) : new Color(240, 240, 240));
-        lineNumbers.setForeground(fg);
+        StyleConstants.setForeground(keywordStyle, darkMode ? new Color(103, 140, 177) : new Color(0, 102, 204));
+        lineNumbers.setBackground(darkMode ? new Color(45, 46, 50) : new Color(230, 234, 240));
+        lineNumbers.setForeground(darkMode ? new Color(150, 150, 150) : new Color(80, 80, 80));
         
         tokensTable.setBackground(bg);
         tokensTable.setForeground(fg);
@@ -1101,7 +1135,7 @@ public class WppScannerGUI extends JFrame {
         symbolTable.getTableHeader().setForeground(fg);
         
         errorsTable.setBackground(bg);
-        errorsTable.setForeground(Color.RED); // Keep errors red in both modes
+        errorsTable.setForeground(new Color(220, 53, 69)); // Keep errors red in both modes
         errorsTable.setGridColor(gridColor);
         errorsTable.getTableHeader().setBackground(headerBg);
         errorsTable.getTableHeader().setForeground(fg);
@@ -1246,15 +1280,15 @@ public class WppScannerGUI extends JFrame {
         SyntaxAnalyzer syntaxAnalyzer = new SyntaxAnalyzer(tokens);
         java.util.List<String> syntaxErrors = syntaxAnalyzer.analyze();
         for (String error : syntaxErrors) {
-            lineNum = -1;
+            int lineNumError = -1;
             if (error.startsWith("Line ")) {
                 try {
-                    lineNum = Integer.parseInt(error.substring(5, error.indexOf(":")));
+                    lineNumError = Integer.parseInt(error.substring(5, error.indexOf(":")));
                 } catch (NumberFormatException | StringIndexOutOfBoundsException e) {
                     // Continue with -1
                 }
             }
-            errorsTableModel.addRow(new Object[] { lineNum != -1 ? lineNum : "N/A", error });
+            errorsTableModel.addRow(new Object[] { lineNumError != -1 ? lineNumError : "N/A", error });
         }
 
         updateSymbolTable();
