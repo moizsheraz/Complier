@@ -153,11 +153,9 @@ class SyntaxAnalyzer {
                 
                 // Check for function body or semicolon (for declarations)
                 if (currentIndex < tokens.size()) {
-                    if (tokens.get(currentIndex).value.equals("{")) {
-                        // Function definition with body
-                        scopeStack.push(new HashSet<>());
-                        skipBlock();
-                    } else if (tokens.get(currentIndex).value.equals(";")) {
+                  if (tokens.get(currentIndex).value.equals("{")) {
+    skipBlock(); // Use the modified skipBlock
+}else if (tokens.get(currentIndex).value.equals(";")) {
                         // Function declaration without body
                         currentIndex++;
                     } else {
@@ -663,27 +661,59 @@ class SyntaxAnalyzer {
         }
     }
 
-    private void skipBlock() {
-        currentIndex++;
-        int braceCount = 1;
-        while (currentIndex < tokens.size() && braceCount > 0) {
-            Token token = tokens.get(currentIndex);
-            if (token.type.equals("Separator")) {
-                if (token.value.equals("{")) {
-                    braceCount++;
-                    scopeStack.push(new HashSet<>());
-                } else if (token.value.equals("}")) {
-                    braceCount--;
-                    if (braceCount > 0)
-                        scopeStack.pop();
-                }
+   private void skipBlock() {
+    currentIndex++; // Consume '{'
+    scopeStack.push(new HashSet<>()); // New scope
+    int braceCount = 1;
+
+    while (currentIndex < tokens.size() && braceCount > 0) {
+        Token token = tokens.get(currentIndex);
+        
+        if (token.type.equals("Separator") && token.value.equals("{")) {
+            braceCount++;
+            skipBlock(); // Recursive call for nested blocks
+        } else if (token.type.equals("Separator") && token.value.equals("}")) {
+            braceCount--;
+            if (braceCount == 0) {
+                scopeStack.pop(); // Pop current scope
+                currentIndex++;
+                break;
             }
             currentIndex++;
-        }
-        if (braceCount > 0) {
-            errors.add("Line " + tokens.get(currentIndex - 1).line + ": Missing closing brace '}'");
+        } else {
+            // Analyze statements within the block
+            if (isDataType(token.value)) {
+                analyzeVariableDeclaration();
+            } else if (isIdentifier(token)) {
+                if (lookAhead().type.equals("Operator") && lookAhead().value.equals("=")) {
+                    analyzeAssignment();
+                } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
+                    analyzeFunctionCall();
+                } else {
+                    errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
+                    currentIndex++;
+                }
+            } else if (token.value.equals("if")) {
+                analyzeIfStatement();
+            } else if (token.value.equals("for")) {
+                analyzeForLoop();
+            } else if (token.value.equals("while")) {
+                analyzeWhileLoop();
+            } else if (token.value.equals("return")) {
+                analyzeReturnStatement();
+            } else if (!token.type.equals("Separator") && !token.type.equals("Operator")) {
+                errors.add("Line " + token.line + ": Unexpected token '" + token.value + "'");
+                currentIndex++;
+            } else {
+                currentIndex++;
+            }
         }
     }
+
+    if (braceCount > 0) {
+        errors.add("Line " + tokens.get(currentIndex - 1).line + ": Missing closing brace '}'");
+    }
+}
 
     private boolean isVariableDeclared(String varName) {
         for (Set<String> scope : scopeStack) {
