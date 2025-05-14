@@ -838,15 +838,17 @@ public class WppScannerGUI extends JFrame {
         setJMenuBar(menuBar);
 
         // Toolbar setup
-        JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
-        toolBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        toolBar.setBackground(new Color(236, 240, 245));
-        toolBar.add(createToolbarButton("Open", "FileView.directoryIcon", "Open", e -> openFile()));
-        toolBar.addSeparator();
-        toolBar.add(createToolbarButton("Save", "FileView.fileIcon", "Save", e -> saveFile()));
-        toolBar.addSeparator();
-        toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e -> runScanner()));
+       JToolBar toolBar = new JToolBar();
+toolBar.setFloatable(false);
+toolBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+toolBar.setBackground(new Color(0, 122, 204)); // VS Code blue
+
+toolBar.add(createToolbarButton("Open", "FileView.directoryIcon", "Open", e -> openFile()));
+toolBar.addSeparator();
+toolBar.add(createToolbarButton("Save", "FileView.fileIcon", "Save", e -> saveFile()));
+toolBar.addSeparator();
+toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e -> runScanner()));
+
 
         // Code area setup
         codeArea = new JTextPane();
@@ -982,16 +984,17 @@ public class WppScannerGUI extends JFrame {
         mainSplit.setDividerSize(8);
 
         // Status bar
-        JPanel statusPanel = new JPanel(new BorderLayout());
-        statusPanel.setBackground(new Color(230, 234, 240));
-        statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
-        statusLabelLeft = new JLabel("Ready");
-        statusLabelCenter = new JLabel("Words: 0 | Chars: 0 | Lines: 0");
-        statusLabelCenter.setHorizontalAlignment(JLabel.CENTER);
-        statusLabelRight = new JLabel("Dark Mode OFF");
-        statusPanel.add(statusLabelLeft, BorderLayout.WEST);
-        statusPanel.add(statusLabelCenter, BorderLayout.CENTER);
-        statusPanel.add(statusLabelRight, BorderLayout.EAST);
+     JPanel statusPanel = new JPanel(new BorderLayout());
+statusPanel.setBackground(new Color(0, 122, 204)); // VS Code blue background
+statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
+statusLabelLeft = new JLabel("Ready");
+statusLabelCenter = new JLabel("Words: 0 | Chars: 0 | Lines: 0");
+statusLabelCenter.setHorizontalAlignment(JLabel.CENTER);
+statusLabelRight = new JLabel("Dark Mode OFF");
+statusPanel.add(statusLabelLeft, BorderLayout.WEST);
+statusPanel.add(statusLabelCenter, BorderLayout.CENTER);
+statusPanel.add(statusLabelRight, BorderLayout.EAST);
+
 
         // Main panel
         JPanel mainPanel = new JPanel(new BorderLayout());
@@ -1027,23 +1030,19 @@ public class WppScannerGUI extends JFrame {
         return item;
     }
 
-    private JButton createToolbarButton(String text, String iconKey, String tooltip, ActionListener listener) {
-        Icon icon = null;
-        if (iconKey != null) {
-            icon = UIManager.getIcon(iconKey);
-            if (icon != null) {
-                System.out.println("Loaded built-in icon: " + iconKey);
-            } else {
-                System.err.println("Warning: Built-in icon not found: " + iconKey);
-            }
-        }
-        JButton button = new JButton(text, icon);
-        button.setToolTipText(tooltip);
-        button.setBackground(new Color(236, 240, 245));
-        if (listener != null)
-            button.addActionListener(listener);
-        return button;
-    }
+ private JButton createToolbarButton(String text, String iconKey, String tooltip, ActionListener action) {
+    Icon icon = UIManager.getIcon(iconKey);
+    JButton button = new JButton(text, icon);
+    button.setToolTipText(tooltip);
+    button.setFocusPainted(false);
+    button.setBorderPainted(false);
+    button.setContentAreaFilled(false);
+    button.setForeground(Color.WHITE); // High contrast text
+    button.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+    button.addActionListener(action);
+    return button;
+}
+
 
     private void initializeStyles() {
         StyledDocument doc = codeArea.getStyledDocument();
