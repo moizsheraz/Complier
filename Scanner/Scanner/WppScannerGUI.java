@@ -885,7 +885,9 @@ class SyntaxAnalyzer {
                         analyzeAssignment();
                     } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
                         analyzeFunctionCall();
-                    } else if (lookAhead().type.equals("Operator") &&
+                    }else if (token.value.equals("cout")) {
+    analyzeCoutStatement();
+} else if (lookAhead().type.equals("Operator") &&
                             (lookAhead().value.equals("++") || lookAhead().value.equals("--"))) {
                         if (!isVariableDeclared(token.value)) {
                             errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
@@ -1071,11 +1073,11 @@ public class WppScannerGUI extends JFrame {
         toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e -> runScanner()));
 
         // Code area setup
-        codeArea = new JTextPane();
+       codeArea = new JTextPane();
         initializeStyles();
         String fontName = Arrays.asList(GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames())
                 .contains("JetBrains Mono") ? "JetBrains Mono" : Font.MONOSPACED;
-        codeArea.setFont(new Font(fontName, Font.PLAIN, 14));
+        codeArea.setFont(new Font(fontName, Font.PLAIN, 16));
         codeArea.setBackground(new Color(245, 247, 250));
         codeArea.setDocument(new DefaultStyledDocument());
         codeArea.putClientProperty("caretWidth", 2);
@@ -1089,7 +1091,7 @@ public class WppScannerGUI extends JFrame {
         lineNumbers.setBackground(new Color(230, 234, 240));
         lineNumbers.setForeground(new Color(80, 80, 80));
         lineNumbers.setEditable(false);
-        lineNumbers.setFont(new Font(fontName, Font.PLAIN, 14));
+        lineNumbers.setFont(new Font(fontName, Font.PLAIN, 16));
         lineNumbers.setBorder(BorderFactory.createEmptyBorder(10, 5, 10, 5));
         lineNumbers.setMargin(new Insets(0, 5, 0, 5));
         codeArea.getDocument().addDocumentListener(new DocumentListener() {
@@ -1122,8 +1124,8 @@ public class WppScannerGUI extends JFrame {
         tokensTable.setForeground(new Color(33, 33, 33));
         tokensTable.getTableHeader().setBackground(new Color(230, 234, 240));
         tokensTable.getTableHeader().setForeground(new Color(33, 33, 33));
-        tokensTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
-        tokensTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        tokensTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 14));
+        tokensTable.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         tokensTable.setFillsViewportHeight(true);
 
         symbolTableModel = new DefaultTableModel(new Object[] { "Name", "Kind", "Type", "Value", "Size", "Dimension",
@@ -1136,8 +1138,8 @@ public class WppScannerGUI extends JFrame {
         symbolTable.setForeground(new Color(33, 33, 33));
         symbolTable.getTableHeader().setBackground(new Color(230, 234, 240));
         symbolTable.getTableHeader().setForeground(new Color(33, 33, 33));
-        symbolTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
-        symbolTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        symbolTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 14));
+        symbolTable.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         symbolTable.setFillsViewportHeight(true);
 
         errorsTableModel = new DefaultTableModel(new Object[] { "Line", "Error Message" }, 0) {
@@ -1153,8 +1155,8 @@ public class WppScannerGUI extends JFrame {
         errorsTable.setBackground(new Color(245, 247, 250));
         errorsTable.getTableHeader().setBackground(new Color(230, 234, 240));
         errorsTable.getTableHeader().setForeground(new Color(33, 33, 33));
-        errorsTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
-        errorsTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        errorsTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 14));
+        errorsTable.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         errorsTable.setFillsViewportHeight(true);
 
         errorsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
@@ -1272,6 +1274,8 @@ public class WppScannerGUI extends JFrame {
         errorStyle = doc.addStyle("error", base);
         StyleConstants.setForeground(errorStyle, new Color(220, 53, 69));
         StyleConstants.setBold(errorStyle, true);
+        StyleConstants.setFontSize(keywordStyle, 18);
+
     }
 
     private void applySyntaxHighlighting() {
@@ -1366,6 +1370,8 @@ public class WppScannerGUI extends JFrame {
         codeArea.setCaretColor(darkMode ? new Color(200, 200, 200) : new Color(33, 33, 33));
         StyleConstants.setForeground(defaultStyle, fg);
         StyleConstants.setForeground(keywordStyle, darkMode ? new Color(103, 140, 177) : new Color(0, 102, 204));
+        StyleConstants.setFontSize(keywordStyle, 18);
+
         lineNumbers.setBackground(darkMode ? new Color(45, 46, 50) : new Color(230, 234, 240));
         lineNumbers.setForeground(darkMode ? new Color(150, 150, 150) : new Color(80, 80, 80));
 
