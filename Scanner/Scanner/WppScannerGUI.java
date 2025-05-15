@@ -54,25 +54,28 @@ class SymbolTableEntry {
     }
 }
 
+
 class SyntaxAnalyzer {
-    private java.util.List<Token> tokens;
+    private List<Token> tokens;
     private int currentIndex;
-    private java.util.List<String> errors;
+    private List<String> errors;
     private Stack<Set<String>> scopeStack;
     private Set<String> globalVariables;
     private Map<String, String> functionReturnTypes;
+    private boolean mainFunctionFound; // Flag to track main()
 
-    public SyntaxAnalyzer(java.util.List<Token> tokens) {
+    public SyntaxAnalyzer(List<Token> tokens) {
         this.tokens = tokens;
         this.currentIndex = 0;
         this.errors = new ArrayList<>();
         this.scopeStack = new Stack<>();
         this.globalVariables = new HashSet<>();
         this.functionReturnTypes = new HashMap<>();
+        this.mainFunctionFound = false; // Initialize flag
         scopeStack.push(globalVariables); // Global scope
     }
 
-    public java.util.List<String> analyze() {
+    public List<String> analyze() {
         while (currentIndex < tokens.size()) {
             Token token = tokens.get(currentIndex);
             if (isFunctionDeclaration()) {
@@ -110,11 +113,9 @@ class SyntaxAnalyzer {
                 }
             } else if (token.value.equals("if")) {
                 analyzeIfStatement();
-            }
-            else if (token.value.equals("cout")) {
-                    analyzeCoutStatement();
-            }
-            else if (token.value.equals("for")) {
+            } else if (token.value.equals("cout")) {
+                analyzeCoutStatement();
+            } else if (token.value.equals("for")) {
                 analyzeForLoop();
             } else if (token.value.equals("while")) {
                 analyzeWhileLoop();
@@ -135,6 +136,12 @@ class SyntaxAnalyzer {
                 currentIndex++;
             }
         }
+
+        // Check for main() function after analysis
+        if (!mainFunctionFound) {
+            errors.add("Line 1: No 'main' function found - program must define 'int main()' or 'int main(int argc, char* argv[])'");
+        }
+
         return errors;
     }
 
@@ -156,23 +163,31 @@ class SyntaxAnalyzer {
         int line = tokens.get(currentIndex).line;
         String returnType = tokens.get(currentIndex).value;
         currentIndex++; // consume data type
-        
+
         if (currentIndex < tokens.size() && isIdentifier(tokens.get(currentIndex))) {
             String functionName = tokens.get(currentIndex).value;
             functionReturnTypes.put(functionName, returnType);
+            // Check if this is main()
+            if (functionName.equals("main")) {
+                if (!returnType.equals("int")) {
+                    errors.add("Line " + line + ": 'main' function must return 'int'");
+                } else {
+                    mainFunctionFound = true; // Mark main() as found, will validate parameters later
+                }
+            }
             currentIndex++; // consume identifier
-            
+
             if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("(")) {
                 currentIndex++; // consume '('
-                
+
                 analyzeParameters(functionName);
-                
+
                 if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(")")) {
                     errors.add("Line " + line + ": Missing closing parenthesis in function declaration");
                 } else {
                     currentIndex++; // consume ')'
                 }
-                
+
                 if (currentIndex < tokens.size()) {
                     if (tokens.get(currentIndex).value.equals("{")) {
                         skipBlock();
@@ -193,10 +208,11 @@ class SyntaxAnalyzer {
     private void analyzeParameters(String functionName) {
         int line = tokens.get(currentIndex).line;
         boolean expectParam = true;
-        
+        List<String> paramTypes = new ArrayList<>();
+
         while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(")")) {
             Token token = tokens.get(currentIndex);
-            
+
             if (token.value.equals(",")) {
                 if (expectParam) {
                     errors.add("Line " + line + ": Unexpected comma in parameter list");
@@ -205,21 +221,23 @@ class SyntaxAnalyzer {
                 currentIndex++;
                 continue;
             }
-            
+
             if (expectParam) {
                 if (isDataType(token.value)) {
                     String paramType = token.value;
+                    paramTypes.add(paramType);
                     currentIndex++;
-                    
+
                     if (currentIndex < tokens.size() && isIdentifier(tokens.get(currentIndex))) {
                         String paramName = tokens.get(currentIndex).value;
                         addVariableToScope(paramName);
                         currentIndex++;
                         expectParam = false;
-                        
+
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("[")) {
                             currentIndex++;
                             if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("]")) {
+                                paramTypes.set(paramTypes.size() - 1, paramType + "[]");
                                 currentIndex++;
                             } else {
                                 errors.add("Line " + line + ": Expected ']' in array parameter declaration");
@@ -235,6 +253,18 @@ class SyntaxAnalyzer {
             } else {
                 errors.add("Line " + line + ": Expected comma between parameters");
                 currentIndex++;
+            }
+        }
+
+        // Validate main() parameters
+        if (functionName.equals("main") && mainFunctionFound) {
+            if (paramTypes.isEmpty()) {
+                // Valid: int main()
+            } else if (paramTypes.size() == 2 && paramTypes.get(0).equals("int") && paramTypes.get(1).equals("char[]")) {
+                // Valid: int main(int argc, char* argv[])
+            } else {
+                errors.add("Line " + line + ": Invalid parameters for 'main' function. Expected 'int main()' or 'int main(int argc, char* argv[])'");
+                mainFunctionFound = false; // Invalidate main() if parameters are incorrect
             }
         }
     }
@@ -577,18 +607,18 @@ class SyntaxAnalyzer {
     private void analyzeCoutStatement() {
         int line = tokens.get(currentIndex).line;
         currentIndex++; // consume 'cout'
-        
-        while (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Operator") && 
+
+        while (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Operator") &&
                tokens.get(currentIndex).value.equals("<<")) {
             currentIndex++; // consume '<<'
-            
+
             if (currentIndex >= tokens.size()) {
                 errors.add("Line " + line + ": Expected expression after '<<'");
                 return;
             }
-            
+
             Token outputToken = tokens.get(currentIndex);
-            if (outputToken.type.startsWith("Literal") || 
+            if (outputToken.type.startsWith("Literal") ||
                 (outputToken.type.equals("Identifier") && isVariableDeclared(outputToken.value)) ||
                 outputToken.value.equals("endl")) {
                 currentIndex++; // consume the output item
@@ -598,7 +628,7 @@ class SyntaxAnalyzer {
                 return;
             }
         }
-        
+
         if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(";")) {
             errors.add("Line " + line + ": Missing semicolon after cout statement");
         } else {
@@ -665,11 +695,11 @@ class SyntaxAnalyzer {
     private void analyzeReturnStatement() {
         int line = tokens.get(currentIndex).line;
         currentIndex++;
-        
+
         // Check if we're in a function
         boolean inFunction = scopeStack.size() > 1;
         String expectedReturnType = "void";
-        
+
         if (inFunction) {
             for (int i = tokens.size() - 1; i >= 0; i--) {
                 Token t = tokens.get(i);
@@ -679,27 +709,27 @@ class SyntaxAnalyzer {
                 }
             }
         }
-        
+
         if (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
             if (expectedReturnType.equals("void")) {
                 errors.add("Line " + line + ": Void function should not return a value");
             }
-            
+
             Token returnValue = tokens.get(currentIndex);
             if (returnValue.type.startsWith("Literal")) {
                 if (!isTypeCompatible(expectedReturnType, returnValue)) {
-                    errors.add("Line " + line + ": Return type mismatch: cannot return " + 
+                    errors.add("Line " + line + ": Return type mismatch: cannot return " +
                              returnValue.type + " from function expecting " + expectedReturnType);
                 }
             }
-            
+
             while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                 currentIndex++;
             }
         } else if (!expectedReturnType.equals("void")) {
             errors.add("Line " + line + ": Non-void function should return a value");
         }
-        
+
         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
             currentIndex++;
         } else {
@@ -714,7 +744,7 @@ class SyntaxAnalyzer {
 
         while (currentIndex < tokens.size() && braceCount > 0) {
             Token token = tokens.get(currentIndex);
-            
+
             if (token.type.equals("Separator") && token.value.equals("{")) {
                 braceCount++;
                 skipBlock();
@@ -734,7 +764,7 @@ class SyntaxAnalyzer {
                         analyzeAssignment();
                     } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
                         analyzeFunctionCall();
-                    } else if (lookAhead().type.equals("Operator") && 
+                    } else if (lookAhead().type.equals("Operator") &&
                             (lookAhead().value.equals("++") || lookAhead().value.equals("--"))) {
                         if (!isVariableDeclared(token.value)) {
                             errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
@@ -790,6 +820,7 @@ class SyntaxAnalyzer {
                 op.equals("<=") || op.equals(">=");
     }
 }
+
 
 public class WppScannerGUI extends JFrame {
     private JTextPane codeArea;
@@ -885,7 +916,8 @@ public class WppScannerGUI extends JFrame {
 
         JMenu helpMenu = new JMenu("Help");
         helpMenu.add(createMenuItem("About", "OptionPane.informationIcon", null, e -> showAboutDialog()));
-        helpMenu.add(createMenuItem("Keyboard Shortcuts", "OptionPane.informationIcon", null, e -> showShortcutsHelp()));
+        helpMenu.add(
+                createMenuItem("Keyboard Shortcuts", "OptionPane.informationIcon", null, e -> showShortcutsHelp()));
 
         menuBar.add(fileMenu);
         menuBar.add(editMenu);
@@ -993,10 +1025,10 @@ public class WppScannerGUI extends JFrame {
         errorsTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
         errorsTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         errorsTable.setFillsViewportHeight(true);
-        
+
         errorsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
                     boolean hasFocus, int row, int column) {
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
                 c.setForeground(new Color(220, 53, 69));
@@ -1149,28 +1181,29 @@ public class WppScannerGUI extends JFrame {
     private void showAboutDialog() {
         JOptionPane.showMessageDialog(this,
                 "<html><b>Wpp Compiler by Binary Brains</b><br><br>" +
-                "<table border='0' cellpadding='3'>" +
-                "<tr><td><font color='#0066cc'>Version:</font></td><td>1.2</td></tr>" +
-                "<tr><td><font color='#0066cc'>Features:</font></td><td>Syntax Analysis, Symbol Table, Error Checking</td></tr>" +
-                "<tr><td><font color='#0066cc'>Created by:</font></td><td>Arfan,Moiz,Zain</td></tr>" +
-                "</table></html>",
+                        "<table border='0' cellpadding='3'>" +
+                        "<tr><td><font color='#0066cc'>Version:</font></td><td>1.2</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Features:</font></td><td>Syntax Analysis, Symbol Table, Error Checking</td></tr>"
+                        +
+                        "<tr><td><font color='#0066cc'>Created by:</font></td><td>Arfan,Moiz,Zain</td></tr>" +
+                        "</table></html>",
                 "About", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void showShortcutsHelp() {
         JOptionPane.showMessageDialog(this,
                 "<html><b>Keyboard Shortcuts</b><br><br>" +
-                "<table border='0' cellpadding='3'>" +
-                "<tr><td><font color='#0066cc'>New File</font></td><td>Ctrl+N</td></tr>" +
-                "<tr><td><font color='#0066cc'>Open File</font></td><td>Ctrl+O</td></tr>" +
-                "<tr><td><font color='#0066cc'>Save File</font></td><td>Ctrl+S</td></tr>" +
-                "<tr><td><font color='#0066cc'>Exit</font></td><td>Ctrl+Q</td></tr>" +
-                "<tr><td><font color='#0066cc'>Undo</font></td><td>Ctrl+Z</td></tr>" +
-                "<tr><td><font color='#0066cc'>Redo</font></td><td>Ctrl+Y</td></tr>" +
-                "<tr><td><font color='#0066cc'>Run Scanner</font></td><td>Ctrl+R</td></tr>" +
-                "<tr><td><font color='#0066cc'>Find/Replace</font></td><td>Ctrl+F</td></tr>" +
-                "<tr><td><font color='#0066cc'>Toggle Dark Mode</font></td><td>Ctrl+D</td></tr>" +
-                "</table></html>",
+                        "<table border='0' cellpadding='3'>" +
+                        "<tr><td><font color='#0066cc'>New File</font></td><td>Ctrl+N</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Open File</font></td><td>Ctrl+O</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Save File</font></td><td>Ctrl+S</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Exit</font></td><td>Ctrl+Q</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Undo</font></td><td>Ctrl+Z</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Redo</font></td><td>Ctrl+Y</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Run Scanner</font></td><td>Ctrl+R</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Find/Replace</font></td><td>Ctrl+F</td></tr>" +
+                        "<tr><td><font color='#0066cc'>Toggle Dark Mode</font></td><td>Ctrl+D</td></tr>" +
+                        "</table></html>",
                 "Keyboard Shortcuts", JOptionPane.INFORMATION_MESSAGE);
     }
 
@@ -1196,7 +1229,7 @@ public class WppScannerGUI extends JFrame {
         Color fg = darkMode ? new Color(200, 200, 200) : new Color(33, 33, 33);
         Color headerBg = darkMode ? new Color(45, 46, 50) : new Color(230, 234, 240);
         Color gridColor = darkMode ? new Color(60, 60, 60) : new Color(200, 200, 200);
-        
+
         codeArea.setBackground(bg);
         codeArea.setForeground(fg);
         codeArea.setCaretColor(darkMode ? new Color(200, 200, 200) : new Color(33, 33, 33));
@@ -1204,25 +1237,25 @@ public class WppScannerGUI extends JFrame {
         StyleConstants.setForeground(keywordStyle, darkMode ? new Color(103, 140, 177) : new Color(0, 102, 204));
         lineNumbers.setBackground(darkMode ? new Color(45, 46, 50) : new Color(230, 234, 240));
         lineNumbers.setForeground(darkMode ? new Color(150, 150, 150) : new Color(80, 80, 80));
-        
+
         tokensTable.setBackground(bg);
         tokensTable.setForeground(fg);
         tokensTable.setGridColor(gridColor);
         tokensTable.getTableHeader().setBackground(headerBg);
         tokensTable.getTableHeader().setForeground(fg);
-        
+
         symbolTable.setBackground(bg);
         symbolTable.setForeground(fg);
         symbolTable.setGridColor(gridColor);
         symbolTable.getTableHeader().setBackground(headerBg);
         symbolTable.getTableHeader().setForeground(fg);
-        
+
         errorsTable.setBackground(bg);
         errorsTable.setForeground(new Color(220, 53, 69));
         errorsTable.setGridColor(gridColor);
         errorsTable.getTableHeader().setBackground(headerBg);
         errorsTable.getTableHeader().setForeground(fg);
-        
+
         statusLabelRight.setText("Dark Mode " + (darkMode ? "ON" : "OFF"));
         applySyntaxHighlighting();
         SwingUtilities.updateComponentTreeUI(this);
@@ -1294,12 +1327,12 @@ public class WppScannerGUI extends JFrame {
         errorsTableModel.setRowCount(0);
         symbolTableMap = new LinkedHashMap<>();
         tokens = new ArrayList<>();
-        
+
         // Predefine cout in symbol table
         SymbolTableEntry coutEntry = new SymbolTableEntry("cout", "stream", "ostream");
         coutEntry.lineOfDeclaration = 0; // Predefined
         symbolTableMap.put("cout", coutEntry);
-        
+
         String text = codeArea.getText();
         if (text.trim().isEmpty()) {
             JOptionPane.showMessageDialog(this, "No code to scan!");
@@ -1389,10 +1422,10 @@ public class WppScannerGUI extends JFrame {
         java.util.List<String> result = new ArrayList<>();
         StringBuilder buffer = new StringBuilder();
         boolean inString = false, inChar = false;
-        
+
         for (int i = 0; i < line.length(); i++) {
             char ch = line.charAt(i);
-            
+
             if (inString) {
                 if (ch == '\\' && i + 1 < line.length()) {
                     buffer.append('\\').append(line.charAt(++i));
@@ -1449,7 +1482,7 @@ public class WppScannerGUI extends JFrame {
                             continue;
                         }
                     }
-                    
+
                     // Check for single-character operators/separators
                     String charStr = String.valueOf(ch);
                     if (SEPARATORS.contains(charStr) || OPERATORS.contains(charStr)) {
@@ -1464,7 +1497,7 @@ public class WppScannerGUI extends JFrame {
                 }
             }
         }
-        
+
         if (buffer.length() > 0)
             result.add(buffer.toString());
         return result;
