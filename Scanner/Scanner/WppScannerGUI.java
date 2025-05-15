@@ -80,13 +80,31 @@ class SyntaxAnalyzer {
             } else if (isDataType(token.value)) {
                 analyzeVariableDeclaration();
             } else if (isIdentifier(token)) {
-                if (lookAhead().type.equals("Operator") && lookAhead().value.equals("=")) {
-                    analyzeAssignment();
-                } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
+                Token nextToken = lookAhead();
+                if (nextToken.type.equals("Operator")) {
+                    if (nextToken.value.equals("=")) {
+                        analyzeAssignment();
+                    } else if (nextToken.value.equals("++") || nextToken.value.equals("--")) {
+                        // Handle postfix increment/decrement
+                        if (!isVariableDeclared(token.value)) {
+                            errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                        }
+                        currentIndex += 2; // Skip identifier and operator
+                        // Check for semicolon
+                        if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
+                            currentIndex++;
+                        } else {
+                            errors.add("Line " + token.line + ": Missing semicolon after increment/decrement");
+                        }
+                    } else {
+                        errors.add("Line " + token.line + ": Invalid operator after identifier '" + token.value + "'");
+                        currentIndex++;
+                    }
+                } else if (nextToken.type.equals("Separator") && nextToken.value.equals("(")) {
                     analyzeFunctionCall();
-                }else if (token.value.equals("cout")) {  // Add this condition
-            analyzeCoutStatement();
-        } else {
+                } else if (token.value.equals("cout")) {
+                    analyzeCoutStatement();
+                } else {
                     errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
                     currentIndex++;
                 }
@@ -155,9 +173,9 @@ class SyntaxAnalyzer {
                 
                 // Check for function body or semicolon (for declarations)
                 if (currentIndex < tokens.size()) {
-                  if (tokens.get(currentIndex).value.equals("{")) {
-    skipBlock(); // Use the modified skipBlock
-}else if (tokens.get(currentIndex).value.equals(";")) {
+                    if (tokens.get(currentIndex).value.equals("{")) {
+                        skipBlock(); // Use the modified skipBlock
+                    } else if (tokens.get(currentIndex).value.equals(";")) {
                         // Function declaration without body
                         currentIndex++;
                     } else {
@@ -561,46 +579,48 @@ class SyntaxAnalyzer {
             errors.add("Line " + line + ": Missing opening parenthesis in while loop");
         }
     }
+
     private void analyzeCoutStatement() {
-    int line = tokens.get(currentIndex).line;
-    currentIndex++; // consume 'cout'
-    
-    // Check for << operator
-    while (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("<<")) {
-        currentIndex++; // consume <<
+        int line = tokens.get(currentIndex).line;
+        currentIndex++; // consume 'cout'
         
-        // Check what's being output
-        if (currentIndex >= tokens.size()) {
-            errors.add("Line " + line + ": Expected expression after <<");
-            return;
+        // Check for << operator
+        while (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("<<")) {
+            currentIndex++; // consume <<
+            
+            // Check what's being output
+            if (currentIndex >= tokens.size()) {
+                errors.add("Line " + line + ": Expected expression after <<");
+                return;
+            }
+            
+            Token outputToken = tokens.get(currentIndex);
+            if (outputToken.type.startsWith("Literal") || 
+                (outputToken.type.equals("Identifier") && isVariableDeclared(outputToken.value)) ||
+                outputToken.value.equals("endl")) {
+                currentIndex++; // consume the output item
+            } else {
+                errors.add("Line " + line + ": Invalid output item: " + outputToken.value);
+                currentIndex++;
+            }
         }
         
-        Token outputToken = tokens.get(currentIndex);
-        if (outputToken.type.startsWith("Literal") || 
-            (outputToken.type.equals("Identifier") && isVariableDeclared(outputToken.value)) ||
-            outputToken.value.equals("endl")) {
-            currentIndex++; // consume the output item
-        } else {
-            errors.add("Line " + line + ": Invalid output item: " + outputToken.value);
+        // Check for semicolon
+        if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
             currentIndex++;
+        } else {
+            errors.add("Line " + line + ": Missing semicolon after cout statement");
         }
     }
-    
-    // Check for semicolon
-    if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
-        currentIndex++;
-    } else {
-        errors.add("Line " + line + ": Missing semicolon after cout statement");
-    }
-}
+
     private void analyzeFunctionCall() {
         Token funcToken = tokens.get(currentIndex);
         int line = funcToken.line;
         String funcName = funcToken.value;
-         if (funcName.equals("cout")) {
-        analyzeCoutStatement();
-        return;
-    }
+        if (funcName.equals("cout")) {
+            analyzeCoutStatement();
+            return;
+        }
         currentIndex++;
         if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator")
                 && tokens.get(currentIndex).value.equals("(")) {
@@ -698,63 +718,73 @@ class SyntaxAnalyzer {
         }
     }
 
-private void skipBlock() {
-    currentIndex++; // Consume '{'
-    scopeStack.push(new HashSet<>()); // New scope
-    int braceCount = 1;
+    private void skipBlock() {
+        currentIndex++; // Consume '{'
+        scopeStack.push(new HashSet<>()); // New scope
+        int braceCount = 1;
 
-    while (currentIndex < tokens.size() && braceCount > 0) {
-        Token token = tokens.get(currentIndex);
-        
-        if (token.type.equals("Separator") && token.value.equals("{")) {
-            braceCount++;
-            skipBlock(); // Recursive call for nested blocks
-        } else if (token.type.equals("Separator") && token.value.equals("}")) {
-            braceCount--;
-            if (braceCount == 0) {
-                scopeStack.pop(); // Pop current scope
-                currentIndex++;
-                break;
-            }
-            currentIndex++;
-        } else {
-            // Analyze statements within the block
-            if (isDataType(token.value)) {
-                analyzeVariableDeclaration();
-            } else if (isIdentifier(token)) {
-                if (lookAhead().type.equals("Operator") && lookAhead().value.equals("=")) {
-                    analyzeAssignment();
-                } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
-                    analyzeFunctionCall();
-                }else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
-                    analyzeFunctionCall();
-                } else if (token.value.equals("cout")) {  // Add this condition
-                    analyzeFunctionCall();
-                } else {
-                    errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
+        while (currentIndex < tokens.size() && braceCount > 0) {
+            Token token = tokens.get(currentIndex);
+            
+            if (token.type.equals("Separator") && token.value.equals("{")) {
+                braceCount++;
+                skipBlock(); // Recursive call for nested blocks
+            } else if (token.type.equals("Separator") && token.value.equals("}")) {
+                braceCount--;
+                if (braceCount == 0) {
+                    scopeStack.pop(); // Pop current scope
                     currentIndex++;
+                    break;
                 }
-            } else if (token.value.equals("if")) {
-                analyzeIfStatement();
-            } else if (token.value.equals("for")) {
-                analyzeForLoop();
-            } else if (token.value.equals("while")) {
-                analyzeWhileLoop();
-            } else if (token.value.equals("return")) {
-                analyzeReturnStatement();
-            } else if (!token.type.equals("Separator") && !token.type.equals("Operator")) {
-                errors.add("Line " + token.line + ": Unexpected token '" + token.value + "'");
                 currentIndex++;
             } else {
-                currentIndex++;
+                // Analyze statements within the block
+                if (isDataType(token.value)) {
+                    analyzeVariableDeclaration();
+                } else if (isIdentifier(token)) {
+                    if (lookAhead().type.equals("Operator") && lookAhead().value.equals("=")) {
+                        analyzeAssignment();
+                    } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
+                        analyzeFunctionCall();
+                    } else if (lookAhead().type.equals("Operator") && 
+                            (lookAhead().value.equals("++") || lookAhead().value.equals("--"))) {
+                        // Handle increment/decrement within block
+                        if (!isVariableDeclared(token.value)) {
+                            errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                        }
+                        currentIndex += 2; // Skip identifier and operator
+                        if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
+                            currentIndex++;
+                        } else {
+                            errors.add("Line " + token.line + ": Missing semicolon after increment/decrement");
+                        }
+                    } else if (token.value.equals("cout")) {
+                        analyzeCoutStatement();
+                    } else {
+                        errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
+                        currentIndex++;
+                    }
+                } else if (token.value.equals("if")) {
+                    analyzeIfStatement();
+                } else if (token.value.equals("for")) {
+                    analyzeForLoop();
+                } else if (token.value.equals("while")) {
+                    analyzeWhileLoop();
+                } else if (token.value.equals("return")) {
+                    analyzeReturnStatement();
+                } else if (!token.type.equals("Separator") && !token.type.equals("Operator")) {
+                    errors.add("Line " + token.line + ": Unexpected token '" + token.value + "'");
+                    currentIndex++;
+                } else {
+                    currentIndex++;
+                }
             }
         }
-    }
 
-    if (braceCount > 0) {
-        errors.add("Line " + tokens.get(currentIndex - 1).line + ": Missing closing brace '}'");
+        if (braceCount > 0) {
+            errors.add("Line " + tokens.get(currentIndex - 1).line + ": Missing closing brace '}'");
+        }
     }
-}
 
     private boolean isVariableDeclared(String varName) {
         for (Set<String> scope : scopeStack) {
@@ -853,8 +883,8 @@ public class WppScannerGUI extends JFrame {
                 }));
 
         JMenu compileMenu = new JMenu("Compile");
-       compileMenu.add(createMenuItem("Run Scanner", "FileView.computerIcon",
-        KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK), e -> runScanner()));
+        compileMenu.add(createMenuItem("Run Scanner", "FileView.computerIcon",
+                KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK), e -> runScanner()));
 
         JMenu searchMenu = new JMenu("Search");
         searchMenu.add(createMenuItem("Find/Replace...", null,
@@ -879,17 +909,16 @@ public class WppScannerGUI extends JFrame {
         setJMenuBar(menuBar);
 
         // Toolbar setup
-       JToolBar toolBar = new JToolBar();
-toolBar.setFloatable(false);
-toolBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-toolBar.setBackground(new Color(0, 122, 204)); // VS Code blue
+        JToolBar toolBar = new JToolBar();
+        toolBar.setFloatable(false);
+        toolBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        toolBar.setBackground(new Color(0, 122, 204)); // VS Code blue
 
-toolBar.add(createToolbarButton("Open", "FileView.directoryIcon", "Open", e -> openFile()));
-toolBar.addSeparator();
-toolBar.add(createToolbarButton("Save", "FileView.fileIcon", "Save", e -> saveFile()));
-toolBar.addSeparator();
-toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e -> runScanner()));
-
+        toolBar.add(createToolbarButton("Open", "FileView.directoryIcon", "Open", e -> openFile()));
+        toolBar.addSeparator();
+        toolBar.add(createToolbarButton("Save", "FileView.fileIcon", "Save", e -> saveFile()));
+        toolBar.addSeparator();
+        toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e -> runScanner()));
 
         // Code area setup
         codeArea = new JTextPane();
@@ -1025,17 +1054,16 @@ toolBar.add(createToolbarButton("Run", "FileView.computerIcon", "Run Scanner", e
         mainSplit.setDividerSize(8);
 
         // Status bar
-     JPanel statusPanel = new JPanel(new BorderLayout());
-statusPanel.setBackground(new Color(0, 122, 204)); // VS Code blue background
-statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
-statusLabelLeft = new JLabel("Ready");
-statusLabelCenter = new JLabel("Words: 0 | Chars: 0 | Lines: 0");
-statusLabelCenter.setHorizontalAlignment(JLabel.CENTER);
-statusLabelRight = new JLabel("Dark Mode OFF");
-statusPanel.add(statusLabelLeft, BorderLayout.WEST);
-statusPanel.add(statusLabelCenter, BorderLayout.CENTER);
-statusPanel.add(statusLabelRight, BorderLayout.EAST);
-
+        JPanel statusPanel = new JPanel(new BorderLayout());
+        statusPanel.setBackground(new Color(0, 122, 204)); // VS Code blue background
+        statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
+        statusLabelLeft = new JLabel("Ready");
+        statusLabelCenter = new JLabel("Words: 0 | Chars: 0 | Lines: 0");
+        statusLabelCenter.setHorizontalAlignment(JLabel.CENTER);
+        statusLabelRight = new JLabel("Dark Mode OFF");
+        statusPanel.add(statusLabelLeft, BorderLayout.WEST);
+        statusPanel.add(statusLabelCenter, BorderLayout.CENTER);
+        statusPanel.add(statusLabelRight, BorderLayout.EAST);
 
         // Main panel
         JPanel mainPanel = new JPanel(new BorderLayout());
@@ -1071,19 +1099,18 @@ statusPanel.add(statusLabelRight, BorderLayout.EAST);
         return item;
     }
 
- private JButton createToolbarButton(String text, String iconKey, String tooltip, ActionListener action) {
-    Icon icon = UIManager.getIcon(iconKey);
-    JButton button = new JButton(text, icon);
-    button.setToolTipText(tooltip);
-    button.setFocusPainted(false);
-    button.setBorderPainted(false);
-    button.setContentAreaFilled(false);
-    button.setForeground(Color.WHITE); // High contrast text
-    button.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-    button.addActionListener(action);
-    return button;
-}
-
+    private JButton createToolbarButton(String text, String iconKey, String tooltip, ActionListener action) {
+        Icon icon = UIManager.getIcon(iconKey);
+        JButton button = new JButton(text, icon);
+        button.setToolTipText(tooltip);
+        button.setFocusPainted(false);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setForeground(Color.WHITE); // High contrast text
+        button.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        button.addActionListener(action);
+        return button;
+    }
 
     private void initializeStyles() {
         StyledDocument doc = codeArea.getStyledDocument();
@@ -1367,85 +1394,85 @@ statusPanel.add(statusLabelRight, BorderLayout.EAST);
         statusLabelLeft.setText("Scan complete: " + tokens.size() + " tokens");
     }
 
-   private java.util.List<String> tokenize(String line) {
-    java.util.List<String> result = new ArrayList<>();
-    StringBuilder buffer = new StringBuilder();
-    boolean inString = false, inChar = false;
-    
-    for (int i = 0; i < line.length(); i++) {
-        char ch = line.charAt(i);
+    private java.util.List<String> tokenize(String line) {
+        java.util.List<String> result = new ArrayList<>();
+        StringBuilder buffer = new StringBuilder();
+        boolean inString = false, inChar = false;
         
-        if (inString) {
-            if (ch == '\\' && i + 1 < line.length()) {
-                buffer.append('\\').append(line.charAt(++i));
-            } else if (ch == '"') {
-                buffer.append('"');
-                result.add(buffer.toString());
-                buffer.setLength(0);
-                inString = false;
-            } else {
-                buffer.append(ch);
-            }
-        } else if (inChar) {
-            if (ch == '\\' && i + 1 < line.length()) {
-                buffer.append('\\').append(line.charAt(++i));
-            } else if (ch == '\'') {
-                buffer.append('\'');
-                result.add(buffer.toString());
-                buffer.setLength(0);
-                inChar = false;
-            } else {
-                buffer.append(ch);
-            }
-        } else {
-            if (ch == '"') {
-                if (buffer.length() > 0)
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            
+            if (inString) {
+                if (ch == '\\' && i + 1 < line.length()) {
+                    buffer.append('\\').append(line.charAt(++i));
+                } else if (ch == '"') {
+                    buffer.append('"');
                     result.add(buffer.toString());
-                buffer.setLength(0);
-                buffer.append('"');
-                inString = true;
-            } else if (ch == '\'') {
-                if (buffer.length() > 0)
-                    result.add(buffer.toString());
-                buffer.setLength(0);
-                buffer.append('\'');
-                inChar = true;
-            } else if (Character.isWhitespace(ch)) {
-                if (buffer.length() > 0)
-                    result.add(buffer.toString());
-                buffer.setLength(0);
-            } else {
-                // Check for multi-character operators
-                if (i + 1 < line.length()) {
-                    String potentialOp = line.substring(i, i + 2);
-                    if (OPERATORS.contains(potentialOp)) {
-                        if (buffer.length() > 0)
-                            result.add(buffer.toString());
-                        buffer.setLength(0);
-                        result.add(potentialOp);
-                        i++; // Skip next character
-                        continue;
-                    }
-                }
-                
-                // Check for single-character operators/separators
-                String charStr = String.valueOf(ch);
-                if (SEPARATORS.contains(charStr) || OPERATORS.contains(charStr)) {
-                    if (buffer.length() > 0)
-                        result.add(buffer.toString());
                     buffer.setLength(0);
-                    result.add(charStr);
+                    inString = false;
                 } else {
                     buffer.append(ch);
                 }
+            } else if (inChar) {
+                if (ch == '\\' && i + 1 < line.length()) {
+                    buffer.append('\\').append(line.charAt(++i));
+                } else if (ch == '\'') {
+                    buffer.append('\'');
+                    result.add(buffer.toString());
+                    buffer.setLength(0);
+                    inChar = false;
+                } else {
+                    buffer.append(ch);
+                }
+            } else {
+                if (ch == '"') {
+                    if (buffer.length() > 0)
+                        result.add(buffer.toString());
+                    buffer.setLength(0);
+                    buffer.append('"');
+                    inString = true;
+                } else if (ch == '\'') {
+                    if (buffer.length() > 0)
+                        result.add(buffer.toString());
+                    buffer.setLength(0);
+                    buffer.append('\'');
+                    inChar = true;
+                } else if (Character.isWhitespace(ch)) {
+                    if (buffer.length() > 0)
+                        result.add(buffer.toString());
+                    buffer.setLength(0);
+                } else {
+                    // Check for multi-character operators
+                    if (i + 1 < line.length()) {
+                        String potentialOp = line.substring(i, i + 2);
+                        if (OPERATORS.contains(potentialOp)) {
+                            if (buffer.length() > 0)
+                                result.add(buffer.toString());
+                            buffer.setLength(0);
+                            result.add(potentialOp);
+                            i++; // Skip next character
+                            continue;
+                        }
+                    }
+                    
+                    // Check for single-character operators/separators
+                    String charStr = String.valueOf(ch);
+                    if (SEPARATORS.contains(charStr) || OPERATORS.contains(charStr)) {
+                        if (buffer.length() > 0)
+                            result.add(buffer.toString());
+                        buffer.setLength(0);
+                        result.add(charStr);
+                    } else {
+                        buffer.append(ch);
+                    }
+                }
             }
         }
+        
+        if (buffer.length() > 0)
+            result.add(buffer.toString());
+        return result;
     }
-    
-    if (buffer.length() > 0)
-        result.add(buffer.toString());
-    return result;
-}
 
     private void updateSymbolTable() {
         for (int i = 0; i < tokens.size(); i++) {
