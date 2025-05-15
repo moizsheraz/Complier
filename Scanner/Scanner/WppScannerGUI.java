@@ -85,24 +85,24 @@ class SyntaxAnalyzer {
                     if (nextToken.value.equals("=")) {
                         analyzeAssignment();
                     } else if (nextToken.value.equals("++") || nextToken.value.equals("--")) {
-                        // Handle postfix increment/decrement
                         if (!isVariableDeclared(token.value)) {
                             errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
                         }
                         currentIndex += 2; // Skip identifier and operator
-                        // Check for semicolon
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                             currentIndex++;
                         } else {
                             errors.add("Line " + token.line + ": Missing semicolon after increment/decrement");
                         }
+                    } else if (nextToken.value.equals("<<") && token.value.equals("cout")) {
+                        analyzeCoutStatement();
                     } else {
                         errors.add("Line " + token.line + ": Invalid operator after identifier '" + token.value + "'");
                         currentIndex++;
                     }
                 } else if (nextToken.type.equals("Separator") && nextToken.value.equals("(")) {
                     analyzeFunctionCall();
-                } else if (token.value.equals("cout")) {
+                } else if (nextToken.type.equals("Keyword") && nextToken.value.equals("cout")) {
                     analyzeCoutStatement();
                 } else {
                     errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
@@ -110,7 +110,11 @@ class SyntaxAnalyzer {
                 }
             } else if (token.value.equals("if")) {
                 analyzeIfStatement();
-            } else if (token.value.equals("for")) {
+            }
+            else if (token.value.equals("cout")) {
+                    analyzeCoutStatement();
+            }
+            else if (token.value.equals("for")) {
                 analyzeForLoop();
             } else if (token.value.equals("while")) {
                 analyzeWhileLoop();
@@ -161,22 +165,18 @@ class SyntaxAnalyzer {
             if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("(")) {
                 currentIndex++; // consume '('
                 
-                // Analyze parameters
                 analyzeParameters(functionName);
                 
-                // Check for closing parenthesis
                 if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(")")) {
                     errors.add("Line " + line + ": Missing closing parenthesis in function declaration");
                 } else {
                     currentIndex++; // consume ')'
                 }
                 
-                // Check for function body or semicolon (for declarations)
                 if (currentIndex < tokens.size()) {
                     if (tokens.get(currentIndex).value.equals("{")) {
-                        skipBlock(); // Use the modified skipBlock
+                        skipBlock();
                     } else if (tokens.get(currentIndex).value.equals(";")) {
-                        // Function declaration without body
                         currentIndex++;
                     } else {
                         errors.add("Line " + line + ": Expected '{' or ';' after function declaration");
@@ -217,7 +217,6 @@ class SyntaxAnalyzer {
                         currentIndex++;
                         expectParam = false;
                         
-                        // Check for array parameter
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("[")) {
                             currentIndex++;
                             if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("]")) {
@@ -242,8 +241,7 @@ class SyntaxAnalyzer {
 
     private boolean isDataType(String value) {
         return value.equals("int") || value.equals("float") || value.equals("double") ||
-                value.equals("char") || value.equals("bool") || value.equals("string") ||
-                value.equals("void");
+                value.equals("char") || value.equals("string") || value.equals("bool") || value.equals("void");
     }
 
     private boolean isIdentifier(Token token) {
@@ -450,13 +448,12 @@ class SyntaxAnalyzer {
                 if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("else")) {
                     currentIndex++;
                     if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("if")) {
-                        analyzeIfStatement(); // Recursive call for else-if
+                        analyzeIfStatement();
                     } else if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator")
                             && tokens.get(currentIndex).value.equals("{")) {
                         scopeStack.push(new HashSet<>());
                         skipBlock();
                     } else if (currentIndex < tokens.size()) {
-                        // Allow single statement after else
                         while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                             Token token = tokens.get(currentIndex);
                             if (isIdentifier(token) && !isVariableDeclared(token.value)) {
@@ -489,7 +486,6 @@ class SyntaxAnalyzer {
                 && tokens.get(currentIndex).value.equals("(")) {
             currentIndex++;
             scopeStack.push(new HashSet<>());
-            // Initialization
             if (currentIndex < tokens.size() && isDataType(tokens.get(currentIndex).value)) {
                 analyzeVariableDeclaration();
             } else {
@@ -502,7 +498,6 @@ class SyntaxAnalyzer {
                     errors.add("Line " + line + ": Missing semicolon in for loop initialization");
                 }
             }
-            // Condition
             int conditionStart = currentIndex;
             while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                 Token token = tokens.get(currentIndex);
@@ -516,7 +511,6 @@ class SyntaxAnalyzer {
             } else {
                 currentIndex++;
             }
-            // Increment
             while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(")")) {
                 Token token = tokens.get(currentIndex);
                 if (isIdentifier(token) && !isVariableDeclared(token.value)) {
@@ -584,13 +578,12 @@ class SyntaxAnalyzer {
         int line = tokens.get(currentIndex).line;
         currentIndex++; // consume 'cout'
         
-        // Check for << operator
-        while (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("<<")) {
-            currentIndex++; // consume <<
+        while (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Operator") && 
+               tokens.get(currentIndex).value.equals("<<")) {
+            currentIndex++; // consume '<<'
             
-            // Check what's being output
             if (currentIndex >= tokens.size()) {
-                errors.add("Line " + line + ": Expected expression after <<");
+                errors.add("Line " + line + ": Expected expression after '<<'");
                 return;
             }
             
@@ -600,16 +593,16 @@ class SyntaxAnalyzer {
                 outputToken.value.equals("endl")) {
                 currentIndex++; // consume the output item
             } else {
-                errors.add("Line " + line + ": Invalid output item: " + outputToken.value);
+                errors.add("Line " + line + ": Invalid output item after '<<': " + outputToken.value);
                 currentIndex++;
+                return;
             }
         }
         
-        // Check for semicolon
-        if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
-            currentIndex++;
-        } else {
+        if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(";")) {
             errors.add("Line " + line + ": Missing semicolon after cout statement");
+        } else {
+            currentIndex++;
         }
     }
 
@@ -678,7 +671,6 @@ class SyntaxAnalyzer {
         String expectedReturnType = "void";
         
         if (inFunction) {
-            // Try to find the function name in the call stack (simplified)
             for (int i = tokens.size() - 1; i >= 0; i--) {
                 Token t = tokens.get(i);
                 if (t.type.equals("Identifier") && functionReturnTypes.containsKey(t.value)) {
@@ -689,12 +681,10 @@ class SyntaxAnalyzer {
         }
         
         if (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
-            // There's a return value
             if (expectedReturnType.equals("void")) {
                 errors.add("Line " + line + ": Void function should not return a value");
             }
             
-            // Check type compatibility if we can
             Token returnValue = tokens.get(currentIndex);
             if (returnValue.type.startsWith("Literal")) {
                 if (!isTypeCompatible(expectedReturnType, returnValue)) {
@@ -703,7 +693,6 @@ class SyntaxAnalyzer {
                 }
             }
             
-            // Skip the return value
             while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                 currentIndex++;
             }
@@ -728,17 +717,16 @@ class SyntaxAnalyzer {
             
             if (token.type.equals("Separator") && token.value.equals("{")) {
                 braceCount++;
-                skipBlock(); // Recursive call for nested blocks
+                skipBlock();
             } else if (token.type.equals("Separator") && token.value.equals("}")) {
                 braceCount--;
                 if (braceCount == 0) {
-                    scopeStack.pop(); // Pop current scope
+                    scopeStack.pop();
                     currentIndex++;
                     break;
                 }
                 currentIndex++;
             } else {
-                // Analyze statements within the block
                 if (isDataType(token.value)) {
                     analyzeVariableDeclaration();
                 } else if (isIdentifier(token)) {
@@ -748,11 +736,10 @@ class SyntaxAnalyzer {
                         analyzeFunctionCall();
                     } else if (lookAhead().type.equals("Operator") && 
                             (lookAhead().value.equals("++") || lookAhead().value.equals("--"))) {
-                        // Handle increment/decrement within block
                         if (!isVariableDeclared(token.value)) {
                             errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
                         }
-                        currentIndex += 2; // Skip identifier and operator
+                        currentIndex += 2;
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                             currentIndex++;
                         } else {
@@ -791,7 +778,7 @@ class SyntaxAnalyzer {
             if (scope.contains(varName))
                 return true;
         }
-        return false;
+        return varName.equals("cout") || varName.equals("endl");
     }
 
     private void addVariableToScope(String varName) {
@@ -823,7 +810,7 @@ public class WppScannerGUI extends JFrame {
             "public", "private", "protected", "static", "virtual", "const", "constexpr",
             "if", "else", "switch", "case", "for", "while", "do", "return", "break", "continue",
             "new", "delete", "sizeof", "typedef", "using", "struct", "union", "enum", "nullptr", "true", "false",
-            "cout"));
+            "cout", "endl"));
     private static final Set<String> OPERATORS = new HashSet<>(Arrays.asList(
             "=", "+", "-", "*", "/", "%", "++", "--", "==", "!=", "<", "<=", ">", ">=", "&&", "||", "!",
             "&", "|", "^", "~", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
@@ -912,7 +899,7 @@ public class WppScannerGUI extends JFrame {
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
         toolBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        toolBar.setBackground(new Color(0, 122, 204)); // VS Code blue
+        toolBar.setBackground(new Color(0, 122, 204));
 
         toolBar.add(createToolbarButton("Open", "FileView.directoryIcon", "Open", e -> openFile()));
         toolBar.addSeparator();
@@ -1007,7 +994,6 @@ public class WppScannerGUI extends JFrame {
         errorsTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         errorsTable.setFillsViewportHeight(true);
         
-        // Set error text color to red
         errorsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
@@ -1055,7 +1041,7 @@ public class WppScannerGUI extends JFrame {
 
         // Status bar
         JPanel statusPanel = new JPanel(new BorderLayout());
-        statusPanel.setBackground(new Color(0, 122, 204)); // VS Code blue background
+        statusPanel.setBackground(new Color(0, 122, 204));
         statusPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 200)));
         statusLabelLeft = new JLabel("Ready");
         statusLabelCenter = new JLabel("Words: 0 | Chars: 0 | Lines: 0");
@@ -1106,7 +1092,7 @@ public class WppScannerGUI extends JFrame {
         button.setFocusPainted(false);
         button.setBorderPainted(false);
         button.setContentAreaFilled(false);
-        button.setForeground(Color.WHITE); // High contrast text
+        button.setForeground(Color.WHITE);
         button.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         button.addActionListener(action);
         return button;
@@ -1232,7 +1218,7 @@ public class WppScannerGUI extends JFrame {
         symbolTable.getTableHeader().setForeground(fg);
         
         errorsTable.setBackground(bg);
-        errorsTable.setForeground(new Color(220, 53, 69)); // Keep errors red in both modes
+        errorsTable.setForeground(new Color(220, 53, 69));
         errorsTable.setGridColor(gridColor);
         errorsTable.getTableHeader().setBackground(headerBg);
         errorsTable.getTableHeader().setForeground(fg);
@@ -1308,6 +1294,12 @@ public class WppScannerGUI extends JFrame {
         errorsTableModel.setRowCount(0);
         symbolTableMap = new LinkedHashMap<>();
         tokens = new ArrayList<>();
+        
+        // Predefine cout in symbol table
+        SymbolTableEntry coutEntry = new SymbolTableEntry("cout", "stream", "ostream");
+        coutEntry.lineOfDeclaration = 0; // Predefined
+        symbolTableMap.put("cout", coutEntry);
+        
         String text = codeArea.getText();
         if (text.trim().isEmpty()) {
             JOptionPane.showMessageDialog(this, "No code to scan!");
@@ -1345,7 +1337,6 @@ public class WppScannerGUI extends JFrame {
             processedLine = processedLine.trim();
             if (!processedLine.isEmpty()) {
                 for (String part : tokenize(processedLine)) {
-                    System.out.println(part);
                     if (part.isEmpty())
                         continue;
                     if (KEYWORDS.contains(part)) {
@@ -1357,9 +1348,9 @@ public class WppScannerGUI extends JFrame {
                         tokens.add(new Token("Separator", part, lineNum));
                     else if (part.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
                         tokens.add(new Token("Identifier", part, lineNum));
-                        if (currentType != null)
+                        if (currentType != null && !part.equals("cout") && !part.equals("endl"))
                             symbolTableMap.putIfAbsent(part,
-                                    new SymbolTableEntry(part, currentType, "Not initialized"));
+                                    new SymbolTableEntry(part, "variable", currentType));
                     } else if (part.matches("\\d+"))
                         tokens.add(new Token("Literal (Int)", part, lineNum));
                     else if (part.matches("\\d+\\.\\d+"))
@@ -1426,31 +1417,35 @@ public class WppScannerGUI extends JFrame {
                 }
             } else {
                 if (ch == '"') {
-                    if (buffer.length() > 0)
+                    if (buffer.length() > 0) {
                         result.add(buffer.toString());
-                    buffer.setLength(0);
+                        buffer.setLength(0);
+                    }
                     buffer.append('"');
                     inString = true;
                 } else if (ch == '\'') {
-                    if (buffer.length() > 0)
+                    if (buffer.length() > 0) {
                         result.add(buffer.toString());
-                    buffer.setLength(0);
+                        buffer.setLength(0);
+                    }
                     buffer.append('\'');
                     inChar = true;
                 } else if (Character.isWhitespace(ch)) {
-                    if (buffer.length() > 0)
+                    if (buffer.length() > 0) {
                         result.add(buffer.toString());
-                    buffer.setLength(0);
+                        buffer.setLength(0);
+                    }
                 } else {
                     // Check for multi-character operators
                     if (i + 1 < line.length()) {
                         String potentialOp = line.substring(i, i + 2);
                         if (OPERATORS.contains(potentialOp)) {
-                            if (buffer.length() > 0)
+                            if (buffer.length() > 0) {
                                 result.add(buffer.toString());
-                            buffer.setLength(0);
+                                buffer.setLength(0);
+                            }
                             result.add(potentialOp);
-                            i++; // Skip next character
+                            i++;
                             continue;
                         }
                     }
@@ -1458,9 +1453,10 @@ public class WppScannerGUI extends JFrame {
                     // Check for single-character operators/separators
                     String charStr = String.valueOf(ch);
                     if (SEPARATORS.contains(charStr) || OPERATORS.contains(charStr)) {
-                        if (buffer.length() > 0)
+                        if (buffer.length() > 0) {
                             result.add(buffer.toString());
-                        buffer.setLength(0);
+                            buffer.setLength(0);
+                        }
                         result.add(charStr);
                     } else {
                         buffer.append(ch);
@@ -1477,7 +1473,7 @@ public class WppScannerGUI extends JFrame {
     private void updateSymbolTable() {
         for (int i = 0; i < tokens.size(); i++) {
             Token token = tokens.get(i);
-            if ("Identifier".equals(token.type)) {
+            if ("Identifier".equals(token.type) && !token.value.equals("cout") && !token.value.equals("endl")) {
                 String identifier = token.value;
                 int lineNum = token.line;
                 if (i > 0 && "Keyword".equals(tokens.get(i - 1).type) && KEYWORDS.contains(tokens.get(i - 1).value)) {
