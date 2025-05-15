@@ -55,6 +55,7 @@ class SymbolTableEntry {
 }
 
 
+
 class SyntaxAnalyzer {
     private List<Token> tokens;
     private int currentIndex;
@@ -62,7 +63,10 @@ class SyntaxAnalyzer {
     private Stack<Set<String>> scopeStack;
     private Set<String> globalVariables;
     private Map<String, String> functionReturnTypes;
-    private boolean mainFunctionFound; // Flag to track main()
+    private Map<String, Integer> functionParamCounts; // Track parameter counts for functions
+    private boolean mainFunctionFound;
+    private int mainFunctionLine; // Track line of main() for duplicate detection
+    private Map<String, Integer> variableUsage; // Track variable usage for unused variable detection
 
     public SyntaxAnalyzer(List<Token> tokens) {
         this.tokens = tokens;
@@ -71,7 +75,10 @@ class SyntaxAnalyzer {
         this.scopeStack = new Stack<>();
         this.globalVariables = new HashSet<>();
         this.functionReturnTypes = new HashMap<>();
-        this.mainFunctionFound = false; // Initialize flag
+        this.functionParamCounts = new HashMap<>();
+        this.mainFunctionFound = false;
+        this.mainFunctionLine = -1;
+        this.variableUsage = new HashMap<>();
         scopeStack.push(globalVariables); // Global scope
     }
 
@@ -89,26 +96,24 @@ class SyntaxAnalyzer {
                         analyzeAssignment();
                     } else if (nextToken.value.equals("++") || nextToken.value.equals("--")) {
                         if (!isVariableDeclared(token.value)) {
-                            errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                            errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
                         }
                         currentIndex += 2; // Skip identifier and operator
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                             currentIndex++;
                         } else {
-                            errors.add("Line " + token.line + ": Missing semicolon after increment/decrement");
+                            errors.add("Syntax Error at Line " + token.line + ": Missing semicolon after increment/decrement");
                         }
                     } else if (nextToken.value.equals("<<") && token.value.equals("cout")) {
                         analyzeCoutStatement();
                     } else {
-                        errors.add("Line " + token.line + ": Invalid operator after identifier '" + token.value + "'");
+                        errors.add("Syntax Error at Line " + token.line + ": Invalid operator '" + nextToken.value + "' after identifier '" + token.value + "'");
                         currentIndex++;
                     }
                 } else if (nextToken.type.equals("Separator") && nextToken.value.equals("(")) {
                     analyzeFunctionCall();
-                } else if (nextToken.type.equals("Keyword") && nextToken.value.equals("cout")) {
-                    analyzeCoutStatement();
                 } else {
-                    errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
+                    errors.add("Syntax Error at Line " + token.line + ": Unexpected identifier '" + token.value + "' in statement");
                     currentIndex++;
                 }
             } else if (token.value.equals("if")) {
@@ -129,17 +134,27 @@ class SyntaxAnalyzer {
                     scopeStack.pop();
                 }
                 currentIndex++;
-            } else if (!token.type.equals("Separator") && !token.type.equals("Operator")) {
-                errors.add("Line " + token.line + ": Unexpected token '" + token.value + "'");
+            } else if (token.type.equals("Separator") && token.value.equals(";")) {
+                errors.add("Syntax Error at Line " + token.line + ": Stray semicolon");
+                currentIndex++;
+            } else if (token.type.equals("Operator")) {
+                errors.add("Syntax Error at Line " + token.line + ": Unexpected operator '" + token.value + "' in global scope");
                 currentIndex++;
             } else {
+                errors.add("Syntax Error at Line " + token.line + ": Unexpected token '" + token.value + "'");
                 currentIndex++;
             }
         }
 
-        // Check for main() function after analysis
+        // Validate main() presence and variable usage
         if (!mainFunctionFound) {
-            errors.add("Line 1: No 'main' function found - program must define 'int main()' or 'int main(int argc, char* argv[])'");
+            errors.add("Semantic Error at Line 1: No valid 'main' function found - program must define 'int main()' or 'int main(int argc, char* argv[])'");
+        }
+        // Check for unused variables
+        for (Map.Entry<String, Integer> entry : variableUsage.entrySet()) {
+            if (entry.getValue() == 0) {
+                errors.add("Warning at Line 1: Variable '" + entry.getKey() + "' declared but never used");
+            }
         }
 
         return errors;
@@ -166,56 +181,77 @@ class SyntaxAnalyzer {
 
         if (currentIndex < tokens.size() && isIdentifier(tokens.get(currentIndex))) {
             String functionName = tokens.get(currentIndex).value;
-            functionReturnTypes.put(functionName, returnType);
-            // Check if this is main()
             if (functionName.equals("main")) {
+                if (mainFunctionFound) {
+                    errors.add("Semantic Error at Line " + line + ": Duplicate 'main' function declaration; previous at Line " + mainFunctionLine);
+                    currentIndex++;
+                    return;
+                }
                 if (!returnType.equals("int")) {
-                    errors.add("Line " + line + ": 'main' function must return 'int'");
+                    errors.add("Syntax Error at Line " + line + ": 'main' function must return 'int'");
                 } else {
-                    mainFunctionFound = true; // Mark main() as found, will validate parameters later
+                    mainFunctionFound = true;
+                    mainFunctionLine = line;
                 }
             }
+            functionReturnTypes.put(functionName, returnType);
             currentIndex++; // consume identifier
 
             if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("(")) {
                 currentIndex++; // consume '('
 
-                analyzeParameters(functionName);
+                int paramCount = analyzeParameters(functionName);
+                functionParamCounts.put(functionName, paramCount);
 
                 if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(")")) {
-                    errors.add("Line " + line + ": Missing closing parenthesis in function declaration");
+                    errors.add("Syntax Error at Line " + line + ": Missing closing parenthesis in function declaration");
                 } else {
                     currentIndex++; // consume ')'
                 }
 
                 if (currentIndex < tokens.size()) {
                     if (tokens.get(currentIndex).value.equals("{")) {
-                        skipBlock();
+                        if (functionName.equals("main") && mainFunctionFound) {
+                            // Ensure main() has a body
+                            int startIndex = currentIndex;
+                            skipBlock();
+                            if (startIndex == currentIndex - 1) {
+                                errors.add("Syntax Error at Line " + line + ": 'main' function must have a non-empty body");
+                                mainFunctionFound = false;
+                            }
+                        } else {
+                            skipBlock();
+                        }
                     } else if (tokens.get(currentIndex).value.equals(";")) {
+                        if (functionName.equals("main")) {
+                            errors.add("Syntax Error at Line " + line + ": 'main' function must have a body, not just a prototype");
+                            mainFunctionFound = false;
+                        }
                         currentIndex++;
                     } else {
-                        errors.add("Line " + line + ": Expected '{' or ';' after function declaration");
+                        errors.add("Syntax Error at Line " + line + ": Expected '{' or ';' after function declaration");
                     }
                 }
             } else {
-                errors.add("Line " + line + ": Expected '(' after function name");
+                errors.add("Syntax Error at Line " + line + ": Expected '(' after function name");
             }
         } else {
-            errors.add("Line " + line + ": Expected identifier after return type");
+            errors.add("Syntax Error at Line " + line + ": Expected identifier after return type");
         }
     }
 
-    private void analyzeParameters(String functionName) {
+    private int analyzeParameters(String functionName) {
         int line = tokens.get(currentIndex).line;
         boolean expectParam = true;
         List<String> paramTypes = new ArrayList<>();
+        int paramCount = 0;
 
         while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(")")) {
             Token token = tokens.get(currentIndex);
 
             if (token.value.equals(",")) {
                 if (expectParam) {
-                    errors.add("Line " + line + ": Unexpected comma in parameter list");
+                    errors.add("Syntax Error at Line " + line + ": Unexpected comma in parameter list");
                 }
                 expectParam = true;
                 currentIndex++;
@@ -225,14 +261,22 @@ class SyntaxAnalyzer {
             if (expectParam) {
                 if (isDataType(token.value)) {
                     String paramType = token.value;
+                    if (paramType.equals("void") && !functionName.equals("main")) {
+                        errors.add("Syntax Error at Line " + line + ": 'void' is not a valid parameter type");
+                    }
                     paramTypes.add(paramType);
                     currentIndex++;
 
                     if (currentIndex < tokens.size() && isIdentifier(tokens.get(currentIndex))) {
                         String paramName = tokens.get(currentIndex).value;
+                        if (isVariableDeclaredInCurrentScope(paramName)) {
+                            errors.add("Syntax Error at Line " + line + ": Parameter '" + paramName + "' shadows variable in same scope");
+                        }
                         addVariableToScope(paramName);
+                        variableUsage.put(paramName, 0); // Initialize usage count
                         currentIndex++;
                         expectParam = false;
+                        paramCount++;
 
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("[")) {
                             currentIndex++;
@@ -240,18 +284,18 @@ class SyntaxAnalyzer {
                                 paramTypes.set(paramTypes.size() - 1, paramType + "[]");
                                 currentIndex++;
                             } else {
-                                errors.add("Line " + line + ": Expected ']' in array parameter declaration");
+                                errors.add("Syntax Error at Line " + line + ": Expected ']' in array parameter declaration");
                             }
                         }
                     } else {
-                        errors.add("Line " + line + ": Expected parameter name after type");
+                        errors.add("Syntax Error at Line " + line + ": Expected parameter name after type");
                     }
                 } else {
-                    errors.add("Line " + line + ": Expected parameter type in function declaration");
+                    errors.add("Syntax Error at Line " + line + ": Expected parameter type in function declaration");
                     currentIndex++;
                 }
             } else {
-                errors.add("Line " + line + ": Expected comma between parameters");
+                errors.add("Syntax Error at Line " + line + ": Expected comma between parameters");
                 currentIndex++;
             }
         }
@@ -263,10 +307,12 @@ class SyntaxAnalyzer {
             } else if (paramTypes.size() == 2 && paramTypes.get(0).equals("int") && paramTypes.get(1).equals("char[]")) {
                 // Valid: int main(int argc, char* argv[])
             } else {
-                errors.add("Line " + line + ": Invalid parameters for 'main' function. Expected 'int main()' or 'int main(int argc, char* argv[])'");
-                mainFunctionFound = false; // Invalidate main() if parameters are incorrect
+                errors.add("Syntax Error at Line " + line + ": Invalid parameters for 'main' function. Expected 'int main()' or 'int main(int argc, char* argv[])'");
+                mainFunctionFound = false;
             }
         }
+
+        return paramCount;
     }
 
     private boolean isDataType(String value) {
@@ -293,10 +339,13 @@ class SyntaxAnalyzer {
 
         if (currentIndex < tokens.size() && isIdentifier(tokens.get(currentIndex))) {
             String varName = tokens.get(currentIndex).value;
-            if (isVariableDeclared(varName)) {
-                errors.add("Line " + line + ": Variable '" + varName + "' already declared in this scope");
+            if (isVariableDeclaredInCurrentScope(varName)) {
+                errors.add("Syntax Error at Line " + line + ": Variable '" + varName + "' already declared in this scope");
+            } else if (functionReturnTypes.containsKey(varName)) {
+                errors.add("Syntax Error at Line " + line + ": Variable '" + varName + "' conflicts with function name");
             } else {
                 addVariableToScope(varName);
+                variableUsage.put(varName, 0); // Initialize usage count
             }
             currentIndex++;
 
@@ -304,16 +353,20 @@ class SyntaxAnalyzer {
             if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("[")) {
                 isArray = true;
                 currentIndex++;
-                if (currentIndex < tokens.size() && (tokens.get(currentIndex).type.startsWith("Literal")
-                        || isIdentifier(tokens.get(currentIndex)))) {
+                if (currentIndex < tokens.size() && (tokens.get(currentIndex).type.startsWith("Literal") ||
+                        isIdentifier(tokens.get(currentIndex)))) {
+                    Token indexToken = tokens.get(currentIndex);
+                    if (indexToken.type.equals("Literal (String)") || indexToken.type.equals("Literal (Char)")) {
+                        errors.add("Syntax Error at Line " + line + ": Array index must be an integer");
+                    }
                     currentIndex++;
                 } else {
-                    errors.add("Line " + line + ": Expected array size after '['");
+                    errors.add("Syntax Error at Line " + line + ": Expected array size after '['");
                 }
                 if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("]")) {
                     currentIndex++;
                 } else {
-                    errors.add("Line " + line + ": Expected ']' after array size");
+                    errors.add("Syntax Error at Line " + line + ": Expected ']' after array size");
                 }
             }
 
@@ -321,29 +374,13 @@ class SyntaxAnalyzer {
                     && tokens.get(currentIndex).value.equals("=")) {
                 currentIndex++;
                 if (!isArray) {
-                    if (currentIndex < tokens.size() && tokens.get(currentIndex).type.startsWith("Literal")) {
-                        Token literalToken = tokens.get(currentIndex);
-                        if (!isTypeCompatible(dataType, literalToken)) {
-                            errors.add("Line " + line + ": Type mismatch: cannot assign " + literalToken.type + " to "
-                                    + dataType);
-                        }
-                        if (dataType.equals("char") && literalToken.type.equals("Literal (Char)")
-                                && (literalToken.value.length() != 3 || !literalToken.value.startsWith("'")
-                                        || !literalToken.value.endsWith("'"))) {
-                            errors.add("Line " + line + ": Invalid char literal (must be a single character)");
-                        }
-                        currentIndex++;
-                    } else if (currentIndex < tokens.size() && isIdentifier(tokens.get(currentIndex))) {
-                        if (!isVariableDeclared(tokens.get(currentIndex).value)) {
-                            errors.add("Line " + line + ": Variable '" + tokens.get(currentIndex).value
-                                    + "' used before declaration");
-                        }
-                        currentIndex++;
-                    } else {
-                        errors.add("Line " + line + ": Expected value after '='");
+                    int exprStart = currentIndex;
+                    analyzeExpression(line, dataType);
+                    if (currentIndex == exprStart) {
+                        errors.add("Syntax Error at Line " + line + ": Expected value after '=' in variable initialization");
                     }
                 } else {
-                    errors.add("Line " + line + ": Array initialization not supported in this context");
+                    errors.add("Syntax Error at Line " + line + ": Array initialization not supported in this context");
                     while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                         currentIndex++;
                     }
@@ -354,10 +391,58 @@ class SyntaxAnalyzer {
                     && tokens.get(currentIndex).value.equals(";")) {
                 currentIndex++;
             } else {
-                errors.add("Line " + line + ": Missing semicolon after variable declaration");
+                errors.add("Syntax Error at Line " + line + ": Missing semicolon after variable declaration");
             }
         } else {
-            errors.add("Line " + line + ": Expected identifier after data type");
+            errors.add("Syntax Error at Line " + line + ": Expected identifier after data type");
+        }
+    }
+
+    private void analyzeExpression(int line, String expectedType) {
+        int parenCount = 0;
+        boolean lastWasOperator = false;
+        int exprStart = currentIndex;
+
+        while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
+            Token token = tokens.get(currentIndex);
+            if (token.type.equals("Separator")) {
+                if (token.value.equals("(")) {
+                    parenCount++;
+                } else if (token.value.equals(")")) {
+                    parenCount--;
+                    if (parenCount < 0) {
+                        errors.add("Syntax Error at Line " + line + ": Unmatched closing parenthesis in expression");
+                        break;
+                    }
+                }
+            } else if (token.type.equals("Operator")) {
+                if (lastWasOperator) {
+                    errors.add("Syntax Error at Line " + line + ": Invalid consecutive operators in expression");
+                }
+                lastWasOperator = true;
+            } else if (isIdentifier(token)) {
+                if (!isVariableDeclared(token.value)) {
+                    errors.add("Syntax Error at Line " + line + ": Variable '" + token.value + "' used before declaration");
+                } else {
+                    variableUsage.merge(token.value, 1, Integer::sum); // Increment usage
+                }
+                lastWasOperator = false;
+            } else if (token.type.startsWith("Literal")) {
+                if (expectedType != null && !isTypeCompatible(expectedType, token)) {
+                    errors.add("Type Error at Line " + line + ": Incompatible type '" + token.type + "' for expected type '" + expectedType + "'");
+                }
+                lastWasOperator = false;
+            } else {
+                errors.add("Syntax Error at Line " + line + ": Unexpected token '" + token.value + "' in expression");
+            }
+            currentIndex++;
+        }
+
+        if (parenCount > 0) {
+            errors.add("Syntax Error at Line " + line + ": Unmatched opening parenthesis in expression");
+        }
+        if (lastWasOperator && currentIndex > exprStart) {
+            errors.add("Syntax Error at Line " + line + ": Expression ends with an operator");
         }
     }
 
@@ -385,7 +470,9 @@ class SyntaxAnalyzer {
         if (isIdentifier(token)) {
             String varName = token.value;
             if (!isVariableDeclared(varName)) {
-                errors.add("Line " + line + ": Variable '" + varName + "' used before declaration");
+                errors.add("Syntax Error at Line " + line + ": Variable '" + varName + "' used before declaration");
+            } else {
+                variableUsage.merge(varName, 1, Integer::sum); // Increment usage
             }
             currentIndex++;
             boolean isArray = false;
@@ -394,49 +481,38 @@ class SyntaxAnalyzer {
                 currentIndex++;
                 if (currentIndex < tokens.size() && (isIdentifier(tokens.get(currentIndex))
                         || tokens.get(currentIndex).type.startsWith("Literal"))) {
+                    Token indexToken = tokens.get(currentIndex);
+                    if (indexToken.type.equals("Literal (String)") || indexToken.type.equals("Literal (Char)")) {
+                        errors.add("Syntax Error at Line " + line + ": Array index must be an integer");
+                    }
                     currentIndex++;
                     if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("]")) {
                         currentIndex++;
                     } else {
-                        errors.add("Line " + line + ": Expected ']' after array index");
+                        errors.add("Syntax Error at Line " + line + ": Expected ']' after array index");
                     }
                 } else {
-                    errors.add("Line " + line + ": Expected array index after '['");
+                    errors.add("Syntax Error at Line " + line + ": Expected array index after '['");
                 }
             }
             if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Operator")
                     && tokens.get(currentIndex).value.equals("=")) {
                 currentIndex++;
                 int startIndex = currentIndex;
-                while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
-                    Token current = tokens.get(currentIndex);
-                    if (isIdentifier(current) && !isVariableDeclared(current.value)) {
-                        errors.add("Line " + line + ": Variable '" + current.value + "' used before declaration");
-                    }
-                    currentIndex++;
+                analyzeExpression(line, null); // Type checking optional here
+                if (currentIndex == startIndex) {
+                    errors.add("Syntax Error at Line " + line + ": Expected value after '=' in assignment");
                 }
-                if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(";")) {
-                    errors.add("Line " + line + ": Missing semicolon after assignment");
-                } else {
+                if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                     currentIndex++;
-                    if (startIndex == currentIndex - 1) {
-                        if (isArray) {
-                            errors.add("Line " + line + ": Missing index in array assignment");
-                        } else {
-                            errors.add("Line " + line + ": Expected value after '='");
-                        }
-                    } else {
-                        Token lastToken = tokens.get(currentIndex - 2);
-                        if (lastToken.type.equals("Operator")) {
-                            errors.add("Line " + line + ": Incomplete expression in assignment");
-                        }
-                    }
+                } else {
+                    errors.add("Syntax Error at Line " + line + ": Missing semicolon after assignment");
                 }
             } else {
-                errors.add("Line " + line + ": Expected '=' in assignment");
+                errors.add("Syntax Error at Line " + line + ": Expected '=' in assignment");
             }
         } else {
-            errors.add("Line " + line + ": Expected identifier in assignment");
+            errors.add("Syntax Error at Line " + line + ": Expected identifier in assignment");
             currentIndex++;
         }
     }
@@ -459,17 +535,21 @@ class SyntaxAnalyzer {
                         openParens--;
                 } else if (token.type.equals("Operator") && isComparisonOperator(token.value)) {
                     hasComparison = true;
-                } else if (isIdentifier(token) && !isVariableDeclared(token.value)) {
-                    errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                } else if (isIdentifier(token)) {
+                    if (!isVariableDeclared(token.value)) {
+                        errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                    } else {
+                        variableUsage.merge(token.value, 1, Integer::sum);
+                    }
                 }
                 currentIndex++;
             }
             if (openParens > 0) {
-                errors.add("Line " + line + ": Missing closing parenthesis in if statement");
+                errors.add("Syntax Error at Line " + line + ": Missing closing parenthesis in if statement");
             } else if (conditionStart == currentIndex - 1) {
-                errors.add("Line " + line + ": Empty condition in if statement");
+                errors.add("Syntax Error at Line " + line + ": Empty condition in if statement");
             } else if (!hasComparison) {
-                errors.add("Line " + line + ": No comparison operator in if condition");
+                errors.add("Syntax Error at Line " + line + ": No comparison operator in if condition; expected boolean expression");
             }
             if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator")
                     && tokens.get(currentIndex).value.equals("{")) {
@@ -487,7 +567,7 @@ class SyntaxAnalyzer {
                         while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                             Token token = tokens.get(currentIndex);
                             if (isIdentifier(token) && !isVariableDeclared(token.value)) {
-                                errors.add("Line " + token.line + ": Variable '" + token.value
+                                errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value
                                         + "' used before declaration");
                             }
                             currentIndex++;
@@ -495,17 +575,17 @@ class SyntaxAnalyzer {
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                             currentIndex++;
                         } else {
-                            errors.add("Line " + line + ": Missing semicolon after else statement");
+                            errors.add("Syntax Error at Line " + line + ": Missing semicolon after else statement");
                         }
                     } else {
-                        errors.add("Line " + line + ": Expected statement or '{' after 'else'");
+                        errors.add("Syntax Error at Line " + line + ": Expected statement or '{' after 'else'");
                     }
                 }
             } else {
-                errors.add("Line " + line + ": Expected '{' after if condition");
+                errors.add("Syntax Error at Line " + line + ": Expected '{' after if condition");
             }
         } else {
-            errors.add("Line " + line + ": Missing opening parenthesis in if statement");
+            errors.add("Syntax Error at Line " + line + ": Missing opening parenthesis in if statement");
         }
     }
 
@@ -520,31 +600,46 @@ class SyntaxAnalyzer {
                 analyzeVariableDeclaration();
             } else {
                 while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
+                    Token token = tokens.get(currentIndex);
+                    if (isIdentifier(token) && !isVariableDeclared(token.value)) {
+                        errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                    }
                     currentIndex++;
                 }
                 if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                     currentIndex++;
                 } else {
-                    errors.add("Line " + line + ": Missing semicolon in for loop initialization");
+                    errors.add("Syntax Error at Line " + line + ": Missing semicolon in for loop initialization");
                 }
             }
             int conditionStart = currentIndex;
+            boolean hasComparison = false;
             while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
                 Token token = tokens.get(currentIndex);
+                if (token.type.equals("Operator") && isComparisonOperator(token.value)) {
+                    hasComparison = true;
+                }
                 if (isIdentifier(token) && !isVariableDeclared(token.value)) {
-                    errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                    errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                } else if (isIdentifier(token)) {
+                    variableUsage.merge(token.value, 1, Integer::sum);
                 }
                 currentIndex++;
             }
             if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(";")) {
-                errors.add("Line " + line + ": Missing semicolon in for loop condition");
+                errors.add("Syntax Error at Line " + line + ": Missing semicolon in for loop condition");
             } else {
                 currentIndex++;
+            }
+            if (conditionStart == currentIndex - 1 && !hasComparison) {
+                errors.add("Syntax Error at Line " + line + ": Empty or invalid condition in for loop");
             }
             while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(")")) {
                 Token token = tokens.get(currentIndex);
                 if (isIdentifier(token) && !isVariableDeclared(token.value)) {
-                    errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                    errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                } else if (isIdentifier(token)) {
+                    variableUsage.merge(token.value, 1, Integer::sum);
                 }
                 currentIndex++;
             }
@@ -554,14 +649,14 @@ class SyntaxAnalyzer {
                         && tokens.get(currentIndex).value.equals("{")) {
                     skipBlock();
                 } else {
-                    errors.add("Line " + line + ": Expected '{' after for loop");
+                    errors.add("Syntax Error at Line " + line + ": Expected '{' after for loop");
                 }
             } else {
-                errors.add("Line " + line + ": Missing closing parenthesis in for loop");
+                errors.add("Syntax Error at Line " + line + ": Missing closing parenthesis in for loop");
             }
             scopeStack.pop();
         } else {
-            errors.add("Line " + line + ": Missing opening parenthesis in for loop");
+            errors.add("Syntax Error at Line " + line + ": Missing opening parenthesis in for loop");
         }
     }
 
@@ -572,6 +667,7 @@ class SyntaxAnalyzer {
                 tokens.get(currentIndex).value.equals("(")) {
             currentIndex++;
             int openParens = 1;
+            int conditionStart = currentIndex;
             boolean hasComparison = false;
             while (currentIndex < tokens.size() && openParens > 0) {
                 Token token = tokens.get(currentIndex);
@@ -582,25 +678,31 @@ class SyntaxAnalyzer {
                         openParens--;
                 } else if (token.type.equals("Operator") && isComparisonOperator(token.value)) {
                     hasComparison = true;
-                } else if (isIdentifier(token) && !isVariableDeclared(token.value)) {
-                    errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                } else if (isIdentifier(token)) {
+                    if (!isVariableDeclared(token.value)) {
+                        errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                    } else {
+                        variableUsage.merge(token.value, 1, Integer::sum);
+                    }
                 }
                 currentIndex++;
             }
             if (openParens > 0) {
-                errors.add("Line " + line + ": Missing closing parenthesis in while loop");
+                errors.add("Syntax Error at Line " + line + ": Missing closing parenthesis in while loop");
+            } else if (conditionStart == currentIndex - 1) {
+                errors.add("Syntax Error at Line " + line + ": Empty condition in while loop");
             } else if (!hasComparison) {
-                errors.add("Line " + line + ": No comparison operator in while condition");
+                errors.add("Syntax Error at Line " + line + ": No comparison operator in while condition; expected boolean expression");
             }
             if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator") &&
                     tokens.get(currentIndex).value.equals("{")) {
                 scopeStack.push(new HashSet<>());
                 skipBlock();
             } else {
-                errors.add("Line " + line + ": Expected '{' after while loop");
+                errors.add("Syntax Error at Line " + line + ": Expected '{' after while loop");
             }
         } else {
-            errors.add("Line " + line + ": Missing opening parenthesis in while loop");
+            errors.add("Syntax Error at Line " + line + ": Missing opening parenthesis in while loop");
         }
     }
 
@@ -613,7 +715,7 @@ class SyntaxAnalyzer {
             currentIndex++; // consume '<<'
 
             if (currentIndex >= tokens.size()) {
-                errors.add("Line " + line + ": Expected expression after '<<'");
+                errors.add("Syntax Error at Line " + line + ": Expected expression after '<<' in cout statement");
                 return;
             }
 
@@ -621,16 +723,19 @@ class SyntaxAnalyzer {
             if (outputToken.type.startsWith("Literal") ||
                 (outputToken.type.equals("Identifier") && isVariableDeclared(outputToken.value)) ||
                 outputToken.value.equals("endl")) {
+                if (isIdentifier(outputToken)) {
+                    variableUsage.merge(outputToken.value, 1, Integer::sum);
+                }
                 currentIndex++; // consume the output item
             } else {
-                errors.add("Line " + line + ": Invalid output item after '<<': " + outputToken.value);
+                errors.add("Syntax Error at Line " + line + ": Invalid output item '" + outputToken.value + "' after '<<'");
                 currentIndex++;
                 return;
             }
         }
 
         if (currentIndex >= tokens.size() || !tokens.get(currentIndex).value.equals(";")) {
-            errors.add("Line " + line + ": Missing semicolon after cout statement");
+            errors.add("Syntax Error at Line " + line + ": Missing semicolon after cout statement");
         } else {
             currentIndex++;
         }
@@ -644,6 +749,9 @@ class SyntaxAnalyzer {
             analyzeCoutStatement();
             return;
         }
+        if (!functionReturnTypes.containsKey(funcName)) {
+            errors.add("Semantic Error at Line " + line + ": Function '" + funcName + "' called before declaration");
+        }
         currentIndex++;
         if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator")
                 && tokens.get(currentIndex).value.equals("(")) {
@@ -654,20 +762,24 @@ class SyntaxAnalyzer {
                 Token token = tokens.get(currentIndex);
                 if (token.type.equals("Separator") && token.value.equals(",")) {
                     if (expectArg) {
-                        errors.add("Line " + line + ": Missing argument before comma in function call");
+                        errors.add("Syntax Error at Line " + line + ": Missing argument before comma in function call");
                     }
                     expectArg = true;
                 } else if (isIdentifier(token) || token.type.startsWith("Literal")) {
                     if (!expectArg) {
-                        errors.add("Line " + line + ": Expected ',' between arguments");
+                        errors.add("Syntax Error at Line " + line + ": Expected ',' between arguments in function call");
                     }
-                    if (isIdentifier(token) && !isVariableDeclared(token.value)) {
-                        errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                    if (isIdentifier(token)) {
+                        if (!isVariableDeclared(token.value)) {
+                            errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                        } else {
+                            variableUsage.merge(token.value, 1, Integer::sum);
+                        }
                     }
                     expectArg = false;
                     argCount++;
                 } else {
-                    errors.add("Line " + line + ": Invalid token '" + token.value + "' in function call");
+                    errors.add("Syntax Error at Line " + line + ": Invalid token '" + token.value + "' in function call argument");
                 }
                 currentIndex++;
             }
@@ -676,19 +788,27 @@ class SyntaxAnalyzer {
                 if (expectArg && argCount == 0) {
                     // Allow empty argument list
                 } else if (expectArg) {
-                    errors.add("Line " + line + ": Missing argument after comma in function call");
+                    errors.add("Syntax Error at Line " + line + ": Missing argument after comma in function call");
+                }
+                // Check argument count
+                if (functionReturnTypes.containsKey(funcName)) {
+                    int expectedParams = functionParamCounts.getOrDefault(funcName, 0);
+                    if (argCount != expectedParams) {
+                        errors.add("Semantic Error at Line " + line + ": Function '" + funcName + "' expects " + expectedParams +
+                                   " arguments but " + argCount + " were provided");
+                    }
                 }
             } else {
-                errors.add("Line " + line + ": Missing closing parenthesis in function call");
+                errors.add("Syntax Error at Line " + line + ": Missing closing parenthesis in function call");
             }
             if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator")
                     && tokens.get(currentIndex).value.equals(";")) {
                 currentIndex++;
             } else {
-                errors.add("Line " + line + ": Missing semicolon after function call");
+                errors.add("Syntax Error at Line " + line + ": Missing semicolon after function call");
             }
         } else {
-            errors.add("Line " + line + ": Expected '(' after function name");
+            errors.add("Syntax Error at Line " + line + ": Expected '(' after function name");
         }
     }
 
@@ -696,15 +816,16 @@ class SyntaxAnalyzer {
         int line = tokens.get(currentIndex).line;
         currentIndex++;
 
-        // Check if we're in a function
         boolean inFunction = scopeStack.size() > 1;
         String expectedReturnType = "void";
+        String functionName = null;
 
         if (inFunction) {
             for (int i = tokens.size() - 1; i >= 0; i--) {
                 Token t = tokens.get(i);
                 if (t.type.equals("Identifier") && functionReturnTypes.containsKey(t.value)) {
                     expectedReturnType = functionReturnTypes.get(t.value);
+                    functionName = t.value;
                     break;
                 }
             }
@@ -712,34 +833,34 @@ class SyntaxAnalyzer {
 
         if (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
             if (expectedReturnType.equals("void")) {
-                errors.add("Line " + line + ": Void function should not return a value");
+                errors.add("Syntax Error at Line " + line + ": Void function should not return a value");
             }
-
-            Token returnValue = tokens.get(currentIndex);
-            if (returnValue.type.startsWith("Literal")) {
-                if (!isTypeCompatible(expectedReturnType, returnValue)) {
-                    errors.add("Line " + line + ": Return type mismatch: cannot return " +
-                             returnValue.type + " from function expecting " + expectedReturnType);
+            int startIndex = currentIndex;
+            analyzeExpression(line, expectedReturnType);
+            if (startIndex == currentIndex) {
+                errors.add("Syntax Error at Line " + line + ": Expected return value for non-void function");
+            }
+            if (functionName != null && functionName.equals("main") && expectedReturnType.equals("int")) {
+                Token lastToken = tokens.get(currentIndex - 1);
+                if (!lastToken.type.equals("Literal (Int)")) {
+                    errors.add("Syntax Error at Line " + line + ": 'main' function must return an integer value");
                 }
             }
-
-            while (currentIndex < tokens.size() && !tokens.get(currentIndex).value.equals(";")) {
-                currentIndex++;
-            }
         } else if (!expectedReturnType.equals("void")) {
-            errors.add("Line " + line + ": Non-void function should return a value");
+            errors.add("Syntax Error at Line " + line + ": Non-void function '" + (functionName != null ? functionName : "") +
+                       "' must return a value");
         }
 
         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
             currentIndex++;
         } else {
-            errors.add("Line " + line + ": Missing semicolon after return statement");
+            errors.add("Syntax Error at Line " + line + ": Missing semicolon after return statement");
         }
     }
 
     private void skipBlock() {
         currentIndex++; // Consume '{'
-        scopeStack.push(new HashSet<>()); // New scope
+        scopeStack.push(new HashSet<>());
         int braceCount = 1;
 
         while (currentIndex < tokens.size() && braceCount > 0) {
@@ -767,18 +888,20 @@ class SyntaxAnalyzer {
                     } else if (lookAhead().type.equals("Operator") &&
                             (lookAhead().value.equals("++") || lookAhead().value.equals("--"))) {
                         if (!isVariableDeclared(token.value)) {
-                            errors.add("Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                            errors.add("Syntax Error at Line " + token.line + ": Variable '" + token.value + "' used before declaration");
+                        } else {
+                            variableUsage.merge(token.value, 1, Integer::sum);
                         }
                         currentIndex += 2;
                         if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
                             currentIndex++;
                         } else {
-                            errors.add("Line " + token.line + ": Missing semicolon after increment/decrement");
+                            errors.add("Syntax Error at Line " + token.line + ": Missing semicolon after increment/decrement");
                         }
                     } else if (token.value.equals("cout")) {
                         analyzeCoutStatement();
                     } else {
-                        errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
+                        errors.add("Syntax Error at Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
                         currentIndex++;
                     }
                 } else if (token.value.equals("if")) {
@@ -789,17 +912,21 @@ class SyntaxAnalyzer {
                     analyzeWhileLoop();
                 } else if (token.value.equals("return")) {
                     analyzeReturnStatement();
-                } else if (!token.type.equals("Separator") && !token.type.equals("Operator")) {
-                    errors.add("Line " + token.line + ": Unexpected token '" + token.value + "'");
+                } else if (token.type.equals("Separator") && token.value.equals(";")) {
+                    errors.add("Syntax Error at Line " + token.line + ": Stray semicolon in block");
+                    currentIndex++;
+                } else if (token.type.equals("Operator")) {
+                    errors.add("Syntax Error at Line " + token.line + ": Unexpected operator '" + token.value + "' in block");
                     currentIndex++;
                 } else {
+                    errors.add("Syntax Error at Line " + token.line + ": Unexpected token '" + token.value + "' in block");
                     currentIndex++;
                 }
             }
         }
 
         if (braceCount > 0) {
-            errors.add("Line " + tokens.get(currentIndex - 1).line + ": Missing closing brace '}'");
+            errors.add("Syntax Error at Line " + tokens.get(currentIndex - 1).line + ": Missing closing brace '}'");
         }
     }
 
@@ -809,6 +936,10 @@ class SyntaxAnalyzer {
                 return true;
         }
         return varName.equals("cout") || varName.equals("endl");
+    }
+
+    private boolean isVariableDeclaredInCurrentScope(String varName) {
+        return scopeStack.peek().contains(varName);
     }
 
     private void addVariableToScope(String varName) {
