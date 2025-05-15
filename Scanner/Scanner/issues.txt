@@ -1,0 +1,7 @@
+Please Remove these issues and give us updated code : 
+== statement is always taken as 2 =   in a Complier whether its syntax Analysis or tokeniazation
+== for condition 
+a++ this gives syntax error of a as an unknow token
+
+no cout statement recognize  it doesnot recognize cout as a statement
+	

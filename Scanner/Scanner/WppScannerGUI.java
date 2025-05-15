@@ -84,7 +84,9 @@ class SyntaxAnalyzer {
                     analyzeAssignment();
                 } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
                     analyzeFunctionCall();
-                } else {
+                }else if (token.value.equals("cout")) {  // Add this condition
+            analyzeCoutStatement();
+        } else {
                     errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
                     currentIndex++;
                 }
@@ -559,11 +561,46 @@ class SyntaxAnalyzer {
             errors.add("Line " + line + ": Missing opening parenthesis in while loop");
         }
     }
-
+    private void analyzeCoutStatement() {
+    int line = tokens.get(currentIndex).line;
+    currentIndex++; // consume 'cout'
+    
+    // Check for << operator
+    while (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals("<<")) {
+        currentIndex++; // consume <<
+        
+        // Check what's being output
+        if (currentIndex >= tokens.size()) {
+            errors.add("Line " + line + ": Expected expression after <<");
+            return;
+        }
+        
+        Token outputToken = tokens.get(currentIndex);
+        if (outputToken.type.startsWith("Literal") || 
+            (outputToken.type.equals("Identifier") && isVariableDeclared(outputToken.value)) ||
+            outputToken.value.equals("endl")) {
+            currentIndex++; // consume the output item
+        } else {
+            errors.add("Line " + line + ": Invalid output item: " + outputToken.value);
+            currentIndex++;
+        }
+    }
+    
+    // Check for semicolon
+    if (currentIndex < tokens.size() && tokens.get(currentIndex).value.equals(";")) {
+        currentIndex++;
+    } else {
+        errors.add("Line " + line + ": Missing semicolon after cout statement");
+    }
+}
     private void analyzeFunctionCall() {
         Token funcToken = tokens.get(currentIndex);
         int line = funcToken.line;
         String funcName = funcToken.value;
+         if (funcName.equals("cout")) {
+        analyzeCoutStatement();
+        return;
+    }
         currentIndex++;
         if (currentIndex < tokens.size() && tokens.get(currentIndex).type.equals("Separator")
                 && tokens.get(currentIndex).value.equals("(")) {
@@ -661,7 +698,7 @@ class SyntaxAnalyzer {
         }
     }
 
-   private void skipBlock() {
+private void skipBlock() {
     currentIndex++; // Consume '{'
     scopeStack.push(new HashSet<>()); // New scope
     int braceCount = 1;
@@ -688,6 +725,10 @@ class SyntaxAnalyzer {
                 if (lookAhead().type.equals("Operator") && lookAhead().value.equals("=")) {
                     analyzeAssignment();
                 } else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
+                    analyzeFunctionCall();
+                }else if (lookAhead().type.equals("Separator") && lookAhead().value.equals("(")) {
+                    analyzeFunctionCall();
+                } else if (token.value.equals("cout")) {  // Add this condition
                     analyzeFunctionCall();
                 } else {
                     errors.add("Line " + token.line + ": Invalid statement - unexpected identifier '" + token.value + "'");
@@ -1277,6 +1318,7 @@ statusPanel.add(statusLabelRight, BorderLayout.EAST);
             processedLine = processedLine.trim();
             if (!processedLine.isEmpty()) {
                 for (String part : tokenize(processedLine)) {
+                    System.out.println(part);
                     if (part.isEmpty())
                         continue;
                     if (KEYWORDS.contains(part)) {
@@ -1325,65 +1367,85 @@ statusPanel.add(statusLabelRight, BorderLayout.EAST);
         statusLabelLeft.setText("Scan complete: " + tokens.size() + " tokens");
     }
 
-    private java.util.List<String> tokenize(String line) {
-        java.util.List<String> result = new ArrayList<>();
-        StringBuilder buffer = new StringBuilder();
-        boolean inString = false, inChar = false;
-        for (int i = 0; i < line.length(); i++) {
-            char ch = line.charAt(i);
-            if (inString) {
-                if (ch == '\\' && i + 1 < line.length()) {
-                    buffer.append('\\').append(line.charAt(++i));
-                } else if (ch == '"') {
-                    buffer.append('"');
-                    result.add(buffer.toString());
-                    buffer.setLength(0);
-                    inString = false;
-                } else {
-                    buffer.append(ch);
-                }
-            } else if (inChar) {
-                if (ch == '\\' && i + 1 < line.length()) {
-                    buffer.append('\\').append(line.charAt(++i));
-                } else if (ch == '\'') {
-                    buffer.append('\'');
-                    result.add(buffer.toString());
-                    buffer.setLength(0);
-                    inChar = false;
-                } else {
-                    buffer.append(ch);
-                }
+   private java.util.List<String> tokenize(String line) {
+    java.util.List<String> result = new ArrayList<>();
+    StringBuilder buffer = new StringBuilder();
+    boolean inString = false, inChar = false;
+    
+    for (int i = 0; i < line.length(); i++) {
+        char ch = line.charAt(i);
+        
+        if (inString) {
+            if (ch == '\\' && i + 1 < line.length()) {
+                buffer.append('\\').append(line.charAt(++i));
+            } else if (ch == '"') {
+                buffer.append('"');
+                result.add(buffer.toString());
+                buffer.setLength(0);
+                inString = false;
             } else {
-                if (ch == '"') {
+                buffer.append(ch);
+            }
+        } else if (inChar) {
+            if (ch == '\\' && i + 1 < line.length()) {
+                buffer.append('\\').append(line.charAt(++i));
+            } else if (ch == '\'') {
+                buffer.append('\'');
+                result.add(buffer.toString());
+                buffer.setLength(0);
+                inChar = false;
+            } else {
+                buffer.append(ch);
+            }
+        } else {
+            if (ch == '"') {
+                if (buffer.length() > 0)
+                    result.add(buffer.toString());
+                buffer.setLength(0);
+                buffer.append('"');
+                inString = true;
+            } else if (ch == '\'') {
+                if (buffer.length() > 0)
+                    result.add(buffer.toString());
+                buffer.setLength(0);
+                buffer.append('\'');
+                inChar = true;
+            } else if (Character.isWhitespace(ch)) {
+                if (buffer.length() > 0)
+                    result.add(buffer.toString());
+                buffer.setLength(0);
+            } else {
+                // Check for multi-character operators
+                if (i + 1 < line.length()) {
+                    String potentialOp = line.substring(i, i + 2);
+                    if (OPERATORS.contains(potentialOp)) {
+                        if (buffer.length() > 0)
+                            result.add(buffer.toString());
+                        buffer.setLength(0);
+                        result.add(potentialOp);
+                        i++; // Skip next character
+                        continue;
+                    }
+                }
+                
+                // Check for single-character operators/separators
+                String charStr = String.valueOf(ch);
+                if (SEPARATORS.contains(charStr) || OPERATORS.contains(charStr)) {
                     if (buffer.length() > 0)
                         result.add(buffer.toString());
                     buffer.setLength(0);
-                    buffer.append('"');
-                    inString = true;
-                } else if (ch == '\'') {
-                    if (buffer.length() > 0)
-                        result.add(buffer.toString());
-                    buffer.setLength(0);
-                    buffer.append('\'');
-                    inChar = true;
-                } else if (Character.isWhitespace(ch)) {
-                    if (buffer.length() > 0)
-                        result.add(buffer.toString());
-                    buffer.setLength(0);
-                } else if (SEPARATORS.contains(String.valueOf(ch)) || OPERATORS.contains(String.valueOf(ch))) {
-                    if (buffer.length() > 0)
-                        result.add(buffer.toString());
-                    buffer.setLength(0);
-                    result.add(String.valueOf(ch));
+                    result.add(charStr);
                 } else {
                     buffer.append(ch);
                 }
             }
         }
-        if (buffer.length() > 0)
-            result.add(buffer.toString());
-        return result;
     }
+    
+    if (buffer.length() > 0)
+        result.add(buffer.toString());
+    return result;
+}
 
     private void updateSymbolTable() {
         for (int i = 0; i < tokens.size(); i++) {
